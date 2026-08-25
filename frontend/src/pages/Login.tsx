@@ -7,7 +7,7 @@ export function Login() {
   const handleLogin = () => {
     try {
       setLoading(true);
-      window.location.href = '/api/auth/google';
+      window.location.href = `${import.meta.env.VITE_API_URL}/api/auth/google`;
     } catch {
       setLoading(false);
       setError('Unable to start Google sign-in.');
