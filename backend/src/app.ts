@@ -27,6 +27,13 @@ export function createApp() {
     next();
   });
 
+  app.get('/', (_req, res) => {
+    res.json({
+        success: true,
+        message: 'ReachInbox API is running',
+    });
+});
+
   app.get('/api/health', (_req, res) => {
     res.json({ success: true, data: { status: 'ok' } });
   });
