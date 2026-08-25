@@ -8,7 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src tests --ext .ts",
-    "start": "node dist/server.js",
+    "start": "prisma migrate deploy && node dist/server.js",
     "test": "vitest run",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
