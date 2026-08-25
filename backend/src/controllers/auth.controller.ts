@@ -6,7 +6,10 @@ import { sendError, sendSuccess } from '../utils/response.js';
 const cookieOptions = {
   httpOnly: true,
   secure: env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
+  // The Vercel UI calls this Render API from a different site. `Lax` cookies
+  // are sent for the Google redirect, but not for the subsequent XHR to /me.
+  // Cross-site credentialed API requests require `SameSite=None; Secure`.
+  sameSite: env.NODE_ENV === 'production' ? ('none' as const) : ('lax' as const),
   path: '/',
 };
 
