@@ -11,3 +11,4 @@ frontend/.env
 coverage
 .DS_Store
 .vscode/.ropeproject
+frontend/.env
