@@ -43,6 +43,7 @@ export const emailApi = {
   }) => unwrap<{ campaignId: string; scheduledCount: number; failedEnqueues: number }>(api.post('/emails/schedule', payload)),
   scheduled: () => unwrap<Email[]>(api.get('/emails/scheduled')),
   sent: () => unwrap<Email[]>(api.get('/emails/sent')),
+  failed: () => unwrap<Email[]>(api.get('/emails/failed')),
   get: (id: string) => unwrap<Email>(api.get(`/emails/${id}`)),
   parseLeads: async (input: { text?: string; file?: File }) => {
     const formData = new FormData();

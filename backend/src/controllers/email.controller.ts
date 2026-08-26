@@ -23,7 +23,7 @@ export async function listScheduledEmails(req: Request, res: Response) {
     return sendError(res, 'UNAUTHORIZED', 'Authentication required', 401);
   }
 
-  const emails = await emailRepository.listByUserAndStatus(req.user.id, 'SCHEDULED');
+  const emails = await emailRepository.listByUserAndStatuses(req.user.id, ['SCHEDULED', 'PROCESSING']);
   return sendSuccess(res, emails);
 }
 
@@ -33,6 +33,15 @@ export async function listSentEmails(req: Request, res: Response) {
   }
 
   const emails = await emailRepository.listByUserAndStatus(req.user.id, 'SENT');
+  return sendSuccess(res, emails);
+}
+
+export async function listFailedEmails(req: Request, res: Response) {
+  if (!req.user) {
+    return sendError(res, 'UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  const emails = await emailRepository.listByUserAndStatus(req.user.id, 'FAILED');
   return sendSuccess(res, emails);
 }
 

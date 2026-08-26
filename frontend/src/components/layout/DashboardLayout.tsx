@@ -7,6 +7,7 @@ const navItems = [
   { to: '/dashboard/compose', label: 'Compose' },
   { to: '/dashboard/scheduled', label: 'Scheduled' },
   { to: '/dashboard/sent', label: 'Sent' },
+  { to: '/dashboard/failed', label: 'Failed' },
 ];
 
 export function DashboardLayout(props: {

@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { transaction, updateMany } = vi.hoisted(() => ({ transaction: vi.fn(), updateMany: vi.fn() }));
+const { findMany, transaction, updateMany } = vi.hoisted(() => ({ findMany: vi.fn(), transaction: vi.fn(), updateMany: vi.fn() }));
 
 vi.mock('../src/config/database.js', () => ({
   prisma: {
-    email: { updateMany },
+    email: { findMany, updateMany },
     $transaction: transaction,
   },
 }));
@@ -15,6 +15,7 @@ describe('email retry state', () => {
   beforeEach(() => {
     updateMany.mockReset();
     transaction.mockReset();
+    findMany.mockReset();
   });
 
   it('releases only a claimed email for a BullMQ retry', async () => {
@@ -42,6 +43,18 @@ describe('email retry state', () => {
     expect(updateMany).toHaveBeenNthCalledWith(2, {
       where: { status: 'PROCESSING', processingStartedAt: { lt: cutoff }, attempts: { gte: 3 } },
       data: expect.objectContaining({ status: 'FAILED', errorMessage: 'Worker claim expired after maximum attempts' }),
+    });
+  });
+
+  it('queries scheduled and processing emails together for visibility', async () => {
+    findMany.mockResolvedValue([]);
+
+    await emailRepository.listByUserAndStatuses('user-123', ['SCHEDULED', 'PROCESSING']);
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: { status: { in: ['SCHEDULED', 'PROCESSING'] }, campaign: { userId: 'user-123' } },
+      orderBy: { scheduledAt: 'asc' },
+      include: { sender: true, campaign: true },
     });
   });
 });

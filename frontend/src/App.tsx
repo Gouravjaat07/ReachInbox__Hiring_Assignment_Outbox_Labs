@@ -5,6 +5,7 @@ import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { ScheduledEmails } from './pages/ScheduledEmails';
 import { SentEmails } from './pages/SentEmails';
+import { FailedEmails } from './pages/FailedEmails';
 import { ComposeEmail } from './pages/ComposeEmail';
 
 function ProtectedRoutes() {
@@ -25,6 +26,7 @@ function ProtectedRoutes() {
         <Route path="/dashboard/compose" element={<ComposeEmail />} />
         <Route path="/dashboard/scheduled" element={<ScheduledEmails />} />
         <Route path="/dashboard/sent" element={<SentEmails />} />
+        <Route path="/dashboard/failed" element={<FailedEmails />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </DashboardLayout>

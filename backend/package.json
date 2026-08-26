@@ -11,6 +11,7 @@
     "lint": "eslint src tests --ext .ts",
     "start": "node dist/server.js",
     "smtp:diagnose": "node dist/scripts/smtp-diagnose.js",
+    "email:inspect": "node dist/scripts/email-inspect.js",
     "test": "vitest run",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

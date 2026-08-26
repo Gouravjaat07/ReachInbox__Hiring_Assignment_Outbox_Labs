@@ -52,6 +52,13 @@ export const emailRepository = {
       },
     });
   },
+  listByUserAndStatuses(userId: string, statuses: EmailStatus[]) {
+    return prisma.email.findMany({
+      where: { status: { in: statuses }, campaign: { userId } },
+      orderBy: { scheduledAt: 'asc' },
+      include: { sender: true, campaign: true },
+    });
+  },
   listPendingWithoutJob(limit = 200) {
     return prisma.email.findMany({
       where: {
