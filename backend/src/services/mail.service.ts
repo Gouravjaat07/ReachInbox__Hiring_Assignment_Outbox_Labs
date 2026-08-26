@@ -64,6 +64,7 @@ export async function verifyMailTransport() {
 
 export async function sendEmailMail(input: {
   emailId?: string;
+  attempt?: number;
   from: string;
   to: string;
   subject: string;
@@ -71,7 +72,7 @@ export async function sendEmailMail(input: {
   html: string;
 }) {
   const client = getTransporter();
-  logger.info({ emailId: input.emailId, host: env.SMTP_HOST, port: env.SMTP_PORT }, 'SMTP send started');
+  logger.info({ emailId: input.emailId, attempt: input.attempt, host: env.SMTP_HOST, port: env.SMTP_PORT }, 'SMTP send started');
   try {
     const info = await client.sendMail({
       from: input.from,
@@ -88,7 +89,16 @@ export async function sendEmailMail(input: {
   } catch (error) {
     discardTransport();
     const errorCode = error instanceof Error && 'code' in error ? String(error.code) : undefined;
-    logger.error({ error, errorCode }, 'SMTP send failed');
+    const command = error instanceof Error && 'command' in error ? String(error.command) : undefined;
+    const responseCode = error instanceof Error && 'responseCode' in error ? Number(error.responseCode) : undefined;
+    const phase = command === 'CONN' || ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN', 'ENETUNREACH', 'EPIPE', 'ESOCKET'].includes(errorCode ?? '')
+      ? 'connection'
+      : errorCode === 'EAUTH' || responseCode === 535
+        ? 'authentication'
+        : responseCode !== undefined
+          ? 'smtp'
+          : 'unknown';
+    logger.error({ emailId: input.emailId, attempt: input.attempt, error, errorCode, command, phase }, 'SMTP send failed');
     throw error;
   }
 }
@@ -96,6 +106,6 @@ export async function sendEmailMail(input: {
 export function isRetryableSmtpError(error: unknown) {
   const code = error instanceof Error && 'code' in error ? String(error.code) : '';
   const responseCode = error instanceof Error && 'responseCode' in error ? Number(error.responseCode) : undefined;
-  return ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN', 'EPIPE', 'ESOCKET'].includes(code)
+  return ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN', 'ENETUNREACH', 'EPIPE', 'ESOCKET'].includes(code)
     || (responseCode !== undefined && responseCode >= 400 && responseCode < 500);
 }

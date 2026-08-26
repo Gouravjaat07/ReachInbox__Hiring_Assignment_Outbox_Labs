@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isRetryableSmtpError } from '../src/services/mail.service.js';
 
 describe('SMTP error classification', () => {
-  it.each(['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN', 'EPIPE', 'ESOCKET'])('retries %s', (code) => {
+  it.each(['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN', 'ENETUNREACH', 'EPIPE', 'ESOCKET'])('retries %s', (code) => {
     const error = Object.assign(new Error('connection failed'), { code });
     expect(isRetryableSmtpError(error)).toBe(true);
   });

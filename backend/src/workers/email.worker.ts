@@ -43,6 +43,7 @@ async function processEmailJob(job: Job<{ emailId: string }>) {
     const fromAddress = `${email.sender.name} <${email.sender.email}>`;
     const delivery = await sendEmailMail({
       emailId: email.id,
+      attempt: job.attemptsMade + 1,
       from: fromAddress,
       to: email.recipient,
       subject: email.subject,
