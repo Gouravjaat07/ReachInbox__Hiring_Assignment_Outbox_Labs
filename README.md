@@ -8,6 +8,26 @@ The application persists campaign and email records in PostgreSQL before creatin
 
 The repository is an npm workspaces monorepo with `backend` and `frontend` packages.
 
+## Login Page
+
+<img width="1536" height="773" alt="Screenshot 2026-08-26 081054" src="https://github.com/user-attachments/assets/7f971162-5970-4c32-aa27-97f31c6c632b" />
+
+## Dashboard
+
+<img width="1532" height="777" alt="Screenshot 2026-08-26 081125" src="https://github.com/user-attachments/assets/e32dc80a-518a-440f-a8ac-4a4cd45288a3" />
+
+## Compose Page
+
+<img width="1447" height="712" alt="Screenshot 2026-08-26 081143" src="https://github.com/user-attachments/assets/6dd91f78-6e36-44f6-be07-641544d20a7d" />
+
+## Scheduled Page
+
+<img width="1536" height="776" alt="Screenshot 2026-08-26 081159" src="https://github.com/user-attachments/assets/d7168dc8-6bb2-4504-a186-57d68a341e5c" />
+
+## Sent Page
+
+<img width="1467" height="706" alt="Screenshot 2026-08-26 081212" src="https://github.com/user-attachments/assets/a9b5a8bc-c781-4cfc-ab36-369b5951e7fa" />
+
 ## Features
 
 ### Backend
