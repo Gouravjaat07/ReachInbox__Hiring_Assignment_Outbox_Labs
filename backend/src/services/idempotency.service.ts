@@ -21,15 +21,15 @@ export async function claimEmailForProcessing(emailId: string) {
 }
 
 export async function finalizeSentEmail(emailId: string, previewUrl?: string | null) {
-  return prisma.email.update({
-    where: { id: emailId },
+  return prisma.email.updateMany({
+    where: { id: emailId, status: 'PROCESSING' },
     data: { status: 'SENT', sentAt: new Date(), errorMessage: null, failedAt: null, ...(previewUrl ? { previewUrl } : {}) },
   });
 }
 
 export async function finalizeFailedEmail(emailId: string, errorMessage: string) {
-  return prisma.email.update({
-    where: { id: emailId },
+  return prisma.email.updateMany({
+    where: { id: emailId, status: 'PROCESSING' },
     data: { status: 'FAILED', failedAt: new Date(), errorMessage },
   });
 }

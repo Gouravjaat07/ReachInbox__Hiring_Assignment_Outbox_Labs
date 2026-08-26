@@ -1,11 +1,12 @@
 import { Queue } from 'bullmq';
+import { env } from '../config/env.js';
 import { createBullConnection } from '../config/redis.js';
 import { EMAIL_QUEUE_NAME } from './queue.constants.js';
 
 export const emailQueue = new Queue(EMAIL_QUEUE_NAME, {
   connection: createBullConnection(),
   defaultJobOptions: {
-    attempts: 3,
+    attempts: env.MAX_EMAIL_ATTEMPTS,
     backoff: {
       type: 'exponential',
       delay: 5000,

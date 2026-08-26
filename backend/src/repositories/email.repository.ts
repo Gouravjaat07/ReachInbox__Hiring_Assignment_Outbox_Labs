@@ -66,6 +66,18 @@ export const emailRepository = {
       },
     });
   },
+  recoverStaleProcessing(cutoff: Date, maxAttempts: number) {
+    return prisma.$transaction([
+      prisma.email.updateMany({
+        where: { status: 'PROCESSING', processingStartedAt: { lt: cutoff }, attempts: { lt: maxAttempts } },
+        data: { status: 'SCHEDULED', bullJobId: null, processingStartedAt: null },
+      }),
+      prisma.email.updateMany({
+        where: { status: 'PROCESSING', processingStartedAt: { lt: cutoff }, attempts: { gte: maxAttempts } },
+        data: { status: 'FAILED', failedAt: new Date(), errorMessage: 'Worker claim expired after maximum attempts' },
+      }),
+    ]);
+  },
   updateBullJobId(id: string, bullJobId: string) {
     return prisma.email.update({ where: { id }, data: { bullJobId } });
   },

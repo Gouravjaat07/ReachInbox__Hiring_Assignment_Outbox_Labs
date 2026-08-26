@@ -50,6 +50,8 @@ Deploy one Render Web Service. Its `server.ts` production entrypoint starts Expr
 
 The single Web Service receives the existing `DATABASE_URL`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, SMTP, OAuth, cookie, and worker/rate-limit variables. Only this service runs Prisma migrations during the pre-deploy command.
 
+SMTP is provider-configurable through `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_FROM`. For submission port 587 use `SMTP_SECURE=false` and `SMTP_REQUIRE_TLS=true`; configure the explicit timeout variables from `.env.example`. `PROCESSING_TIMEOUT_MS` controls recovery of claims left by a crashed worker. SMTP verification is advisory and never prevents the API from starting.
+
 BullMQ requires Redis/Valkey to retain queued jobs. Change the Render Key Value eviction policy from `allkeys-lru` to `noeviction` in the Render service settings. This cannot safely be changed by application code; with `allkeys-lru`, Redis may evict delayed BullMQ jobs under memory pressure.
 
 ### Vercel frontend
@@ -150,6 +152,8 @@ npm test
 ## Restart Recovery
 
 Startup reconciliation only finds emails that were persisted in PostgreSQL but never assigned a BullMQ job. It does not blindly recreate every job on every boot.
+
+The API also performs periodic reconciliation. It releases claims older than `PROCESSING_TIMEOUT_MS` back to `SCHEDULED` and recreates missing deterministic jobs. A crash after an SMTP provider accepts a message and before PostgreSQL records `SENT` remains a distributed-systems duplicate-delivery boundary; the worker provides practical, not mathematical, exactly-once behavior.
 
 ## Testing Notes
 

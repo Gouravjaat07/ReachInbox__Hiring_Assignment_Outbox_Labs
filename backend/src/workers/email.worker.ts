@@ -5,7 +5,7 @@ import { createBullConnection } from '../config/redis.js';
 import { EMAIL_QUEUE_NAME } from '../queues/queue.constants.js';
 import { claimEmailForProcessing, finalizeFailedEmail, finalizeSentEmail } from '../services/idempotency.service.js';
 import { reserveSendWindow } from '../services/rate-limit.service.js';
-import { sendEmailMail, verifyMailTransport } from '../services/mail.service.js';
+import { isRetryableSmtpError, sendEmailMail, verifyMailTransport } from '../services/mail.service.js';
 import { emailRepository } from '../repositories/email.repository.js';
 import { emailQueue, deterministicEmailJobId } from '../queues/email.queue.js';
 import { logger } from '../utils/logger.js';
@@ -42,6 +42,7 @@ async function processEmailJob(job: Job<{ emailId: string }>) {
 
     const fromAddress = `${email.sender.name} <${email.sender.email}>`;
     const delivery = await sendEmailMail({
+      emailId: email.id,
       from: fromAddress,
       to: email.recipient,
       subject: email.subject,
@@ -52,19 +53,20 @@ async function processEmailJob(job: Job<{ emailId: string }>) {
     logger.info({ jobId: job.id, emailId: email.id, status: 'SENT' }, 'Email marked as sent');
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown SMTP failure';
+    const errorCode = error instanceof Error && 'code' in error ? String(error.code) : undefined;
     const attempts = job.attemptsMade + 1;
     const maxAttempts = job.opts.attempts ?? 1;
 
-    if (attempts >= maxAttempts) {
+    if (!isRetryableSmtpError(error) || attempts >= maxAttempts) {
       await finalizeFailedEmail(email.id, message);
-      logger.error({ jobId: job.id, emailId: email.id, error: message, status: 'FAILED' }, 'Email failed permanently');
+      logger.error({ jobId: job.id, emailId: email.id, error: message, errorCode, status: 'FAILED' }, 'Email failed permanently');
       return;
     }
 
     // BullMQ retries the same job. Releasing the database claim makes the next
     // attempt eligible while retaining bullJobId, so reconciliation cannot add a duplicate.
     await emailRepository.releaseForRetry(email.id);
-    logger.warn({ jobId: job.id, emailId: email.id, error: message, nextAttempt: attempts + 1 }, 'Email job retrying');
+    logger.warn({ jobId: job.id, emailId: email.id, error: message, errorCode, nextAttempt: attempts + 1 }, 'Email returned to retryable state');
     throw error;
   }
 }

@@ -5,6 +5,7 @@ import { senderRepository } from '../repositories/sender.repository.js';
 import { emailQueue, deterministicEmailJobId } from '../queues/email.queue.js';
 import { addMilliseconds } from '../utils/time.js';
 import { logger } from '../utils/logger.js';
+import { env } from '../config/env.js';
 
 export type ScheduleInput = {
   subject: string;
@@ -76,6 +77,7 @@ export async function scheduleCampaignEmails(user: User, input: ScheduleInput) {
         },
       );
       await emailRepository.updateBullJobId(email.id, job.id as string);
+      logger.info({ campaignId: campaign.id, emailId: email.id, senderId: email.senderId, jobId: job.id, scheduledAt: email.scheduledAt }, 'Email scheduled and BullMQ job created');
       return job.id;
     }),
   );
@@ -93,6 +95,12 @@ export async function scheduleCampaignEmails(user: User, input: ScheduleInput) {
 }
 
 export async function reconcilePendingEmails() {
+  const staleCutoff = new Date(Date.now() - env.PROCESSING_TIMEOUT_MS);
+  const [released, failed] = await emailRepository.recoverStaleProcessing(staleCutoff, env.MAX_EMAIL_ATTEMPTS);
+  if (released.count > 0 || failed.count > 0) {
+    logger.warn({ released: released.count, failed: failed.count, staleCutoff }, 'Recovered stale processing email claims');
+  }
+
   const pending = await emailRepository.listPendingWithoutJob(200);
   for (const email of pending) {
     const delay = Math.max(0, email.scheduledAt.getTime() - Date.now());
