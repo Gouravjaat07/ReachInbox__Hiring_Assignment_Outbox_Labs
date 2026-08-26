@@ -7,10 +7,3 @@ services:
     preDeployCommand: npx prisma migrate deploy
     startCommand: npm run start
     healthCheckPath: /api/health
-
-  - type: worker
-    name: reachinbox-email-worker
-    runtime: node
-    rootDir: backend
-    buildCommand: npm install && npx prisma generate && npm run build
-    startCommand: npm run start:worker

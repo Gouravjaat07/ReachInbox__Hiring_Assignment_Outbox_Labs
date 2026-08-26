@@ -44,12 +44,11 @@ The compose file uses:
 
 Set `NODE_ENV=production` and configure `FRONTEND_URL` as the Vercel **origin**—for example, `https://your-app.vercel.app`, without a trailing slash. Set `GOOGLE_CALLBACK_URL` to `https://your-render-domain.onrender.com/api/auth/google/callback`, plus the existing database, Redis, SMTP, `JWT_SECRET`, and `COOKIE_SECRET` variables. Keep all secrets only in Render's environment configuration.
 
-Deploy the API and BullMQ consumer as two Render services. The included `render.yaml` defines the commands; it intentionally does not create a database or Key Value instance because an existing production database and Valkey instance can be attached to both services.
+Deploy one Render Web Service. Its `server.ts` production entrypoint starts Express and exactly one BullMQ worker in the same Node.js process; the included `render.yaml` defines that service and intentionally does not create a database or Key Value instance.
 
 - Web Service: build `npm install && npx prisma generate && npm run build`; pre-deploy `npx prisma migrate deploy`; start `npm run start`.
-- Background Worker: build `npm install && npx prisma generate && npm run build`; start `npm run start:worker`.
 
-Copy the same `DATABASE_URL`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, SMTP settings, `WORKER_CONCURRENCY`, `MIN_DELAY_BETWEEN_EMAILS_MS`, and `MAX_EMAILS_PER_HOUR` to the worker. The worker also validates the common application environment, so copy the remaining backend variables (`FRONTEND_URL`, Google OAuth variables, `JWT_SECRET`, `COOKIE_SECRET`, and `UPLOAD_MAX_SIZE_MB`) unchanged. Only the web service runs Prisma migrations.
+The single Web Service receives the existing `DATABASE_URL`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, SMTP, OAuth, cookie, and worker/rate-limit variables. Only this service runs Prisma migrations during the pre-deploy command.
 
 BullMQ requires Redis/Valkey to retain queued jobs. Change the Render Key Value eviction policy from `allkeys-lru` to `noeviction` in the Render service settings. This cannot safely be changed by application code; with `allkeys-lru`, Redis may evict delayed BullMQ jobs under memory pressure.
 

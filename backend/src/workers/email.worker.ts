@@ -90,16 +90,8 @@ export async function startEmailWorker() {
     logger.error({ jobId: job?.id, error }, 'Worker failed email job');
   });
 
-  const shutdown = async () => {
-    logger.info('Email worker shutting down');
-    await worker.close();
-    process.exit(0);
-  };
-
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
-
   await worker.waitUntilReady();
+  logger.info({ queue: EMAIL_QUEUE_NAME }, 'Redis connection established');
   logger.info({ queue: EMAIL_QUEUE_NAME, concurrency: env.WORKER_CONCURRENCY }, 'Email worker ready');
   return worker;
 }
