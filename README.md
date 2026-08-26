@@ -38,6 +38,33 @@ The compose file uses:
 - PostgreSQL port: `5432`
 - Redis port: `6379`
 
+## Production Deployment
+
+### Render backend
+
+Set `NODE_ENV=production` and configure `FRONTEND_URL` as the Vercel **origin**—for example, `https://your-app.vercel.app`, without a trailing slash. Set `GOOGLE_CALLBACK_URL` to `https://your-render-domain.onrender.com/api/auth/google/callback`, plus the existing database, Redis, SMTP, `JWT_SECRET`, and `COOKIE_SECRET` variables. Keep all secrets only in Render's environment configuration.
+
+Deploy the API and BullMQ consumer as two Render services. The included `render.yaml` defines the commands; it intentionally does not create a database or Key Value instance because an existing production database and Valkey instance can be attached to both services.
+
+- Web Service: build `npm install && npx prisma generate && npm run build`; pre-deploy `npx prisma migrate deploy`; start `npm run start`.
+- Background Worker: build `npm install && npx prisma generate && npm run build`; start `npm run start:worker`.
+
+Copy the same `DATABASE_URL`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, SMTP settings, `WORKER_CONCURRENCY`, `MIN_DELAY_BETWEEN_EMAILS_MS`, and `MAX_EMAILS_PER_HOUR` to the worker. The worker also validates the common application environment, so copy the remaining backend variables (`FRONTEND_URL`, Google OAuth variables, `JWT_SECRET`, `COOKIE_SECRET`, and `UPLOAD_MAX_SIZE_MB`) unchanged. Only the web service runs Prisma migrations.
+
+BullMQ requires Redis/Valkey to retain queued jobs. Change the Render Key Value eviction policy from `allkeys-lru` to `noeviction` in the Render service settings. This cannot safely be changed by application code; with `allkeys-lru`, Redis may evict delayed BullMQ jobs under memory pressure.
+
+### Vercel frontend
+
+Set `VITE_API_URL=https://your-render-domain.onrender.com` and redeploy after changing it. Never place backend secrets in `VITE_*` variables.
+
+### Google Cloud OAuth
+
+Register `https://your-render-domain.onrender.com/api/auth/google/callback` as an Authorized redirect URI. Add `https://your-app.vercel.app` as an Authorized JavaScript origin if your Google client configuration requires it.
+
+### Cookie and CORS behavior
+
+The Vercel app and Render API are on different sites. In production the API issues secure, HTTP-only `SameSite=None` cookies, and the frontend client sends credentialed requests. The API allows only the configured frontend origin; do not use `*` with credentials.
+
 ## Install
 
 ```bash

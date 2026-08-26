@@ -25,6 +25,7 @@ function getTransporter() {
 export async function verifyMailTransport() {
   const client = getTransporter();
   await client.verify();
+  logger.info('SMTP transport verified');
 }
 
 export async function sendEmailMail(input: {
@@ -35,6 +36,7 @@ export async function sendEmailMail(input: {
   html: string;
 }) {
   const client = getTransporter();
+  logger.info('SMTP send started');
   const info = await client.sendMail({
     from: input.from,
     to: input.to,
@@ -44,7 +46,7 @@ export async function sendEmailMail(input: {
   });
   const previewUrl = nodemailer.getTestMessageUrl(info) || null;
 
-  logger.info({ messageId: info.messageId, accepted: info.accepted, rejected: info.rejected, previewUrl }, 'Email sent');
+  logger.info({ messageId: info.messageId, accepted: info.accepted, rejected: info.rejected }, 'SMTP send succeeded');
 
   return { info, previewUrl };
 }

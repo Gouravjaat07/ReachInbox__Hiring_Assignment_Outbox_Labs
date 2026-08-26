@@ -87,6 +87,15 @@ export const emailRepository = {
       data: { status: 'FAILED', failedAt: new Date(), errorMessage },
     });
   },
+  releaseForRetry(id: string) {
+    return prisma.email.updateMany({
+      where: { id, status: 'PROCESSING' },
+      data: {
+        status: 'SCHEDULED',
+        processingStartedAt: null,
+      },
+    });
+  },
   reschedule(id: string, scheduledAt: Date, bullJobId?: string) {
     return prisma.email.update({
       where: { id },

@@ -3,10 +3,20 @@ import { z } from 'zod';
 
 dotenv.config();
 
+const frontendUrlSchema = z
+  .string()
+  .url()
+  .refine((value) => {
+    const protocol = new URL(value).protocol;
+    return protocol === 'http:' || protocol === 'https:';
+  }, 'FRONTEND_URL must use http or https')
+  // CORS compares the request Origin, which never contains a path or trailing slash.
+  .transform((value) => new URL(value).origin);
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(5000),
-  FRONTEND_URL: z.string().url(),
+  FRONTEND_URL: frontendUrlSchema,
   DATABASE_URL: z.string().min(1),
   REDIS_HOST: z.string().min(1),
   REDIS_PORT: z.coerce.number().int().positive().default(6379),
