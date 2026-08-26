@@ -37,16 +37,21 @@ export async function sendEmailMail(input: {
 }) {
   const client = getTransporter();
   logger.info('SMTP send started');
-  const info = await client.sendMail({
-    from: input.from,
-    to: input.to,
-    subject: input.subject,
-    text: input.text,
-    html: input.html,
-  });
-  const previewUrl = nodemailer.getTestMessageUrl(info) || null;
+  try {
+    const info = await client.sendMail({
+      from: input.from,
+      to: input.to,
+      subject: input.subject,
+      text: input.text,
+      html: input.html,
+    });
+    const previewUrl = nodemailer.getTestMessageUrl(info) || null;
 
-  logger.info({ messageId: info.messageId, accepted: info.accepted, rejected: info.rejected }, 'SMTP send succeeded');
+    logger.info({ messageId: info.messageId, accepted: info.accepted, rejected: info.rejected }, 'SMTP send succeeded');
 
-  return { info, previewUrl };
+    return { info, previewUrl };
+  } catch (error) {
+    logger.error({ error }, 'SMTP send failed');
+    throw error;
+  }
 }

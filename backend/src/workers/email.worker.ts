@@ -64,14 +64,13 @@ async function processEmailJob(job: Job<{ emailId: string }>) {
     // BullMQ retries the same job. Releasing the database claim makes the next
     // attempt eligible while retaining bullJobId, so reconciliation cannot add a duplicate.
     await emailRepository.releaseForRetry(email.id);
-    logger.warn({ jobId: job.id, emailId: email.id, error: message, nextAttempt: attempts + 1 }, 'Email processing failed and will be retried');
+    logger.warn({ jobId: job.id, emailId: email.id, error: message, nextAttempt: attempts + 1 }, 'Email job retrying');
     throw error;
   }
 }
 
 export async function startEmailWorker() {
   logger.info({ queue: EMAIL_QUEUE_NAME, concurrency: env.WORKER_CONCURRENCY }, 'Email worker starting');
-  await verifyMailTransport();
 
   const worker = new Worker(EMAIL_QUEUE_NAME, processEmailJob, {
     connection: createBullConnection(),
@@ -87,11 +86,28 @@ export async function startEmailWorker() {
   });
 
   worker.on('failed', (job, error) => {
-    logger.error({ jobId: job?.id, error }, 'Worker failed email job');
+    logger.error({ jobId: job?.id, emailId: job?.data.emailId, error }, 'Email job failed');
   });
 
-  await worker.waitUntilReady();
+  try {
+    await worker.waitUntilReady();
+  } catch (error) {
+    logger.fatal({ error, dependency: 'redis/bullmq', queue: EMAIL_QUEUE_NAME }, 'BullMQ worker failed to initialize');
+    await worker.close().catch((closeError: unknown) => {
+      logger.error({ error: closeError }, 'Failed to close BullMQ worker after startup error');
+    });
+    throw error;
+  }
+
   logger.info({ queue: EMAIL_QUEUE_NAME }, 'Redis connection established');
   logger.info({ queue: EMAIL_QUEUE_NAME, concurrency: env.WORKER_CONCURRENCY }, 'Email worker ready');
+
+  // SMTP availability must not determine web-service availability. This check
+  // is advisory; sendMail still performs the real connection and BullMQ retries
+  // any transient failure using the existing PROCESSING -> SCHEDULED release.
+  void verifyMailTransport().catch((error: unknown) => {
+    logger.warn({ error, dependency: 'smtp' }, 'SMTP connection unavailable; will retry when sending');
+  });
+
   return worker;
 }
