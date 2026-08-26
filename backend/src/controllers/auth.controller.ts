@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { env } from '../config/env.js';
 import { authenticateGoogleProfile, buildGoogleAuthUrl, createOAuthState, exchangeCodeForGoogleProfile, signAuthToken } from '../services/auth.service.js';
+import { logger } from '../utils/logger.js';
 import { sendError, sendSuccess } from '../utils/response.js';
 
 const cookieOptions = {
@@ -41,7 +42,12 @@ export async function googleCallback(req: Request, res: Response) {
 
     return res.redirect(`${env.FRONTEND_URL}/dashboard`);
   } catch (error) {
-    return sendError(res, 'AUTH_FAILED', error instanceof Error ? error.message : 'Authentication failed', 401);
+    const message = error instanceof Error ? error.message : 'Authentication failed';
+    if (message.includes("Can't reach database server") || message.includes('ECONNREFUSED')) {
+      logger.error({ error }, 'Google authentication unavailable because the database cannot be reached');
+      return sendError(res, 'AUTH_SERVICE_UNAVAILABLE', 'Authentication is temporarily unavailable. Start PostgreSQL and try again.', 503);
+    }
+    return sendError(res, 'AUTH_FAILED', message, 401);
   }
 }
 
