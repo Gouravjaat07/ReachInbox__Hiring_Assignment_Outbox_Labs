@@ -4,12 +4,32 @@ import { logger } from '../utils/logger.js';
 
 let transporter: nodemailer.Transporter | null = null;
 
+function smtpErrorDetails(error: unknown) {
+  const value = error as {
+    code?: unknown;
+    responseCode?: unknown;
+    command?: unknown;
+    message?: unknown;
+    response?: unknown;
+  };
+
+  return {
+    code: typeof value.code === 'string' ? value.code : undefined,
+    responseCode: typeof value.responseCode === 'number' ? value.responseCode : undefined,
+    command: typeof value.command === 'string' ? value.command : undefined,
+    message: typeof value.message === 'string' ? value.message : undefined,
+    response: typeof value.response === 'string' ? value.response : undefined,
+  };
+}
+
 function transportOptions() {
+  const secure = env.SMTP_PORT === 587 ? false : env.SMTP_SECURE ?? env.SMTP_PORT === 465;
+
   return {
     host: env.SMTP_HOST,
     port: env.SMTP_PORT,
-    secure: env.SMTP_SECURE ?? env.SMTP_PORT === 465,
-    requireTLS: env.SMTP_REQUIRE_TLS,
+    secure,
+    requireTLS: env.SMTP_PORT === 587 ? true : env.SMTP_REQUIRE_TLS,
     connectionTimeout: env.SMTP_CONNECTION_TIMEOUT_MS,
     greetingTimeout: env.SMTP_GREETING_TIMEOUT_MS,
     socketTimeout: env.SMTP_SOCKET_TIMEOUT_MS,
@@ -31,8 +51,8 @@ function getTransporter() {
   logger.info({
     host: env.SMTP_HOST,
     port: env.SMTP_PORT,
-    secure: env.SMTP_SECURE ?? env.SMTP_PORT === 465,
-    requireTLS: env.SMTP_REQUIRE_TLS,
+    secure: env.SMTP_PORT === 587 ? false : env.SMTP_SECURE ?? env.SMTP_PORT === 465,
+    requireTLS: env.SMTP_PORT === 587 ? true : env.SMTP_REQUIRE_TLS,
     connectionTimeoutMs: env.SMTP_CONNECTION_TIMEOUT_MS,
     greetingTimeoutMs: env.SMTP_GREETING_TIMEOUT_MS,
     socketTimeoutMs: env.SMTP_SOCKET_TIMEOUT_MS,
@@ -88,17 +108,15 @@ export async function sendEmailMail(input: {
     return { info, previewUrl };
   } catch (error) {
     discardTransport();
-    const errorCode = error instanceof Error && 'code' in error ? String(error.code) : undefined;
-    const command = error instanceof Error && 'command' in error ? String(error.command) : undefined;
-    const responseCode = error instanceof Error && 'responseCode' in error ? Number(error.responseCode) : undefined;
-    const phase = command === 'CONN' || ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN', 'ENETUNREACH', 'EPIPE', 'ESOCKET'].includes(errorCode ?? '')
+    const details = smtpErrorDetails(error);
+    const phase = details.command === 'CONN' || ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN', 'ENETUNREACH', 'EPIPE', 'ESOCKET'].includes(details.code ?? '')
       ? 'connection'
-      : errorCode === 'EAUTH' || responseCode === 535
+      : details.code === 'EAUTH' || details.responseCode === 535
         ? 'authentication'
-        : responseCode !== undefined
+        : details.responseCode !== undefined
           ? 'smtp'
           : 'unknown';
-    logger.error({ emailId: input.emailId, attempt: input.attempt, error, errorCode, command, phase }, 'SMTP send failed');
+    logger.error({ emailId: input.emailId, attempt: input.attempt, ...details, phase }, 'SMTP send failed');
     throw error;
   }
 }
