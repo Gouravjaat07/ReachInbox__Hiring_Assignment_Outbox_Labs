@@ -52,6 +52,17 @@ export async function googleCallback(req: Request, res: Response) {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
+    logger.info(
+      {
+        userId: user.id,
+        cookie: 'auth_token',
+        secure: cookieOptions.secure,
+        sameSite: cookieOptions.sameSite,
+        redirectPath: '/dashboard',
+      },
+      'Google OAuth completed and authentication cookie was issued',
+    );
+
     return res.redirect(`${env.FRONTEND_URL}/dashboard`);
   } catch (error) {
     const message =

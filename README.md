@@ -340,6 +340,8 @@ https://reachinbox-api-production-749e.up.railway.app/api/auth/google/callback
 
 Development cookies are HTTP-only, `Secure=false`, and `SameSite=Lax`. Production cookies are HTTP-only, `Secure=true`, and `SameSite=None` because the Vercel frontend and Railway API are cross-site. CORS allows only the configured `FRONTEND_URL` with credentials enabled; wildcard origins are not used.
 
+Railway terminates TLS through a proxy; the API trusts exactly one proxy in production so Express retains the original HTTPS request context. The callback logs only the authenticated user ID and cookie attributes (never a token), while a rejected authenticated request logs whether the signed cookie was absent or could not be verified. These entries are safe to use when diagnosing a deployed login.
+
 ## API Reference
 
 ### Authentication

@@ -2,7 +2,7 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import { env } from './config/env.js';
+import { env, isProduction } from './config/env.js';
 import { logger } from './utils/logger.js';
 import { authRouter } from './routes/auth.routes.js';
 import { campaignRouter } from './routes/campaign.routes.js';
@@ -13,6 +13,13 @@ import { errorHandler, notFoundHandler } from './middleware/error.middleware.js'
 
 export function createApp() {
   const app = express();
+
+  // Railway terminates TLS at its load balancer. Trusting one proxy preserves
+  // the original HTTPS protocol for Express middleware and future secure-cookie
+  // checks without trusting arbitrary forwarded headers.
+  if (isProduction) {
+    app.set('trust proxy', 1);
+  }
 
   app.use(helmet());
   app.use(cors({
