@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import type { Request, Response } from 'express';
 import { env } from '../config/env.js';
 import {
@@ -7,23 +8,44 @@ import {
   exchangeCodeForGoogleProfile,
   signAuthToken,
 } from '../services/auth.service.js';
+import { consumeAuthHandoff, createAuthHandoff } from '../services/auth-handoff.service.js';
 import { logger } from '../utils/logger.js';
 import { sendError, sendSuccess } from '../utils/response.js';
 
-const cookieOptions = {
+const directOAuthCookieOptions = {
   httpOnly: true,
   secure: env.NODE_ENV === 'production',
-  // The Vercel UI calls the production API from a different site.
-  // Cross-site credentialed API requests require `SameSite=None; Secure`.
-  sameSite: env.NODE_ENV === 'production' ? ('none' as const) : ('lax' as const),
+  // Google returns to Railway in a top-level navigation, so Lax protects the
+  // CSRF-state cookie without permitting cross-site subresource requests.
+  sameSite: 'lax' as const,
   path: '/',
 };
+
+// This response is delivered through Vercel's same-origin /api rewrite. The
+// browser therefore stores the signed cookie for the frontend origin and sends
+// it on later same-origin /api requests.
+const proxiedSessionCookieOptions = {
+  httpOnly: true,
+  secure: env.NODE_ENV === 'production',
+  sameSite: 'lax' as const,
+  path: '/',
+};
+
+function renderHandoffForm(action: string, code: string) {
+  const nonce = crypto.randomBytes(16).toString('base64');
+  const actionOrigin = new URL(action).origin;
+
+  return {
+    contentSecurityPolicy: `default-src 'none'; script-src 'nonce-${nonce}'; form-action ${actionOrigin}; base-uri 'none'`,
+    html: `<!doctype html><html><head><meta charset="utf-8"><title>Signing in…</title></head><body><form id="session-handoff" method="post" action="${action}"><input type="hidden" name="code" value="${code}"></form><script nonce="${nonce}">document.getElementById('session-handoff').submit();</script><noscript><button form="session-handoff" type="submit">Continue</button></noscript></body></html>`,
+  };
+}
 
 export async function googleLogin(req: Request, res: Response) {
   const state = createOAuthState();
 
   res.cookie('oauth_state', state, {
-    ...cookieOptions,
+    ...directOAuthCookieOptions,
     signed: true,
     maxAge: 10 * 60 * 1000,
   });
@@ -42,28 +64,24 @@ export async function googleCallback(req: Request, res: Response) {
   try {
     const profile = await exchangeCodeForGoogleProfile(code);
     const user = await authenticateGoogleProfile(profile);
-    const token = signAuthToken(user.id);
+    const handoffCode = await createAuthHandoff(user.id);
 
-    res.clearCookie('oauth_state', cookieOptions);
+    res.clearCookie('oauth_state', directOAuthCookieOptions);
 
-    res.cookie('auth_token', token, {
-      ...cookieOptions,
-      signed: true,
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    const handoffUrl = new URL('/api/auth/session/complete', env.FRONTEND_URL).toString();
 
     logger.info(
       {
         userId: user.id,
-        cookie: 'auth_token',
-        secure: cookieOptions.secure,
-        sameSite: cookieOptions.sameSite,
-        redirectPath: '/dashboard',
+        handoff: 'created',
+        redirectPath: '/api/auth/session/complete',
       },
-      'Google OAuth completed and authentication cookie was issued',
+      'Google OAuth completed and same-origin session handoff was created',
     );
 
-    return res.redirect(`${env.FRONTEND_URL}/dashboard`);
+    const handoffForm = renderHandoffForm(handoffUrl, handoffCode);
+    res.set('Content-Security-Policy', handoffForm.contentSecurityPolicy);
+    return res.status(200).type('html').send(handoffForm.html);
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'Authentication failed';
@@ -89,6 +107,37 @@ export async function googleCallback(req: Request, res: Response) {
   }
 }
 
+export async function completeSessionHandoff(req: Request, res: Response) {
+  const code = typeof req.body?.code === 'string' ? req.body.code : undefined;
+  if (!code) {
+    return sendError(res, 'AUTH_INVALID_HANDOFF', 'Invalid authentication handoff', 401);
+  }
+
+  try {
+    const userId = await consumeAuthHandoff(code);
+    if (!userId) {
+      return sendError(res, 'AUTH_INVALID_HANDOFF', 'Invalid or expired authentication handoff', 401);
+    }
+
+    const token = signAuthToken(userId);
+    res.cookie('auth_token', token, {
+      ...proxiedSessionCookieOptions,
+      signed: true,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    logger.info(
+      { userId, cookie: 'auth_token', secure: proxiedSessionCookieOptions.secure, sameSite: proxiedSessionCookieOptions.sameSite },
+      'Same-origin authentication cookie was issued',
+    );
+
+    return res.redirect(`${env.FRONTEND_URL}/dashboard`);
+  } catch (error) {
+    logger.error({ error }, 'Failed to complete authentication handoff');
+    return sendError(res, 'AUTH_HANDOFF_FAILED', 'Authentication is temporarily unavailable', 503);
+  }
+}
+
 export async function me(req: Request, res: Response) {
   if (!req.user) {
     return sendError(res, 'UNAUTHORIZED', 'Authentication required', 401);
@@ -98,8 +147,8 @@ export async function me(req: Request, res: Response) {
 }
 
 export async function logout(_req: Request, res: Response) {
-  res.clearCookie('auth_token', cookieOptions);
-  res.clearCookie('oauth_state', cookieOptions);
+  res.clearCookie('auth_token', proxiedSessionCookieOptions);
+  res.clearCookie('oauth_state', directOAuthCookieOptions);
 
   return sendSuccess(res, { loggedOut: true });
 }

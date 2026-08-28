@@ -229,7 +229,7 @@ UPLOAD_MAX_SIZE_MB=5
 VITE_API_URL=http://localhost:5000
 ```
 
-The frontend normalizes `VITE_API_URL` to a backend origin before constructing API and Google-login URLs, and Axios uses `withCredentials: true`. For Vercel, set `VITE_API_URL` to the deployed Railway API origin and rebuild.
+The frontend uses same-origin `/api` requests. Vite proxies them locally and Vercel proxies them to Railway in production, so the HTTP-only authentication cookie remains first-party. `VITE_API_URL` is used only to construct the top-level Google OAuth start URL and must be the backend origin. Axios uses `withCredentials: true`.
 
 ## Local Development
 
@@ -338,7 +338,7 @@ http://localhost:5000/api/auth/google/callback
 https://reachinbox-api-production-749e.up.railway.app/api/auth/google/callback
 ```
 
-Development cookies are HTTP-only, `Secure=false`, and `SameSite=Lax`. Production cookies are HTTP-only, `Secure=true`, and `SameSite=None` because the Vercel frontend and Railway API are cross-site. CORS allows only the configured `FRONTEND_URL` with credentials enabled; wildcard origins are not used.
+OAuth starts directly on Railway so its short-lived CSRF-state cookie can return from Google to the Railway callback. After a successful callback, Railway creates a 60-second single-use Redis handoff and auto-posts it to Vercel's `/api/auth/session/complete` rewrite. The handoff is not a JWT or session token and never appears in a URL. That same-origin response sets the signed auth cookie for Vercel, and all later `/api` requests are proxied to Railway. Development and production session cookies are HTTP-only and `SameSite=Lax`; production cookies are also `Secure`. CORS allows only the configured `FRONTEND_URL` with credentials enabled; wildcard origins are not used.
 
 Railway terminates TLS through a proxy; the API trusts exactly one proxy in production so Express retains the original HTTPS request context. The callback logs only the authenticated user ID and cookie attributes (never a token), while a rejected authenticated request logs whether the signed cookie was absent or could not be verified. These entries are safe to use when diagnosing a deployed login.
 

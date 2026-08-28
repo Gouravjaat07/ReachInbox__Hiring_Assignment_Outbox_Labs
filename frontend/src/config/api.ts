@@ -16,5 +16,8 @@ function normalizeApiOrigin(value: string | undefined) {
 }
 
 export const API_ORIGIN = normalizeApiOrigin(import.meta.env.VITE_API_URL);
-export const API_BASE_URL = new URL('/api', API_ORIGIN).toString();
+// API requests are served through Vercel's /api rewrite in production (and
+// Vite's development proxy locally), keeping the authentication cookie
+// first-party. VITE_API_URL is retained only for the top-level OAuth start.
+export const API_BASE_URL = '/api';
 export const GOOGLE_LOGIN_URL = new URL('/api/auth/google', API_ORIGIN).toString();

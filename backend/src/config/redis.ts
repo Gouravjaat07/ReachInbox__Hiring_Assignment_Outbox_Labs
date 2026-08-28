@@ -12,7 +12,7 @@ interface RedisClientShape {
   get(key: string): Promise<string | null>;
   set(key: string, value: string, mode?: string, duration?: number): Promise<string>;
   multi(): RedisMulti;
-  eval(script: string, numKeys: number, ...args: string[]): Promise<[number, number]>;
+  eval(script: string, numKeys: number, ...args: string[]): Promise<unknown>;
   disconnect(): Promise<void>;
 }
 
