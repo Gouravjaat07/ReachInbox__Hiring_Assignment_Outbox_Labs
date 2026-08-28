@@ -195,9 +195,7 @@ NODE_ENV=development
 PORT=5000
 FRONTEND_URL=http://localhost:5173
 DATABASE_URL=postgresql://<user>:<password>@localhost:5432/<database>
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_PASSWORD=
+REDIS_URL=rediss://default:<upstash-password>@<upstash-host>:6379
 GOOGLE_CLIENT_ID=<google-client-id>
 GOOGLE_CLIENT_SECRET=<google-client-secret>
 GOOGLE_CALLBACK_URL=http://localhost:5000/api/auth/google/callback
@@ -221,7 +219,7 @@ MAX_EMAILS_PER_HOUR=200
 UPLOAD_MAX_SIZE_MB=5
 ```
 
-`DATABASE_URL` points to PostgreSQL. `REDIS_*` configure Redis/BullMQ; an empty local password is valid. OAuth variables configure Google client identity and the callback. `FRONTEND_URL` controls CORS and the post-login redirect. JWT/cookie secrets sign authentication data. SMTP variables configure Ethereal. Worker and rate-limit values control concurrency, retries, recovery, and sender throughput.
+`DATABASE_URL` points to PostgreSQL. In production, `REDIS_URL` configures the TLS-authenticated Upstash Redis/BullMQ connection and must use `rediss://`. OAuth variables configure Google client identity and the callback. `FRONTEND_URL` controls CORS and the post-login redirect. JWT/cookie secrets sign authentication data. SMTP variables configure Ethereal. Worker and rate-limit values control concurrency, retries, recovery, and sender throughput.
 
 ### Frontend
 

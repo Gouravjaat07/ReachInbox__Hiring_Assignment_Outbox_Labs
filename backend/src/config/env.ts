@@ -32,13 +32,20 @@ const googleCallbackUrlSchema = z.string().url().superRefine((value, context) =>
   }
 });
 
+const redisUrlSchema = z
+  .string()
+  .url()
+  .refine((value) => new URL(value).protocol === 'rediss:', 'REDIS_URL must use the rediss:// protocol');
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(5000),
   FRONTEND_URL: frontendUrlSchema,
   DATABASE_URL: z.string().min(1),
-  REDIS_HOST: z.string().min(1),
-  REDIS_PORT: z.coerce.number().int().positive().default(6379),
+  REDIS_URL: redisUrlSchema.optional(),
+  // Legacy local-development fallback. Production must use REDIS_URL.
+  REDIS_HOST: z.string().min(1).optional(),
+  REDIS_PORT: z.coerce.number().int().positive().optional(),
   REDIS_PASSWORD: z.string().optional().default(''),
   GOOGLE_CLIENT_ID: z.string().min(1),
   GOOGLE_CLIENT_SECRET: z.string().min(1),
@@ -62,6 +69,22 @@ const envSchema = z.object({
   MAX_EMAILS_PER_HOUR: z.coerce.number().int().positive().default(200),
   COOKIE_SECRET: z.string().min(16),
   UPLOAD_MAX_SIZE_MB: z.coerce.number().int().positive().default(5),
+}).superRefine((value, context) => {
+  if (value.NODE_ENV === 'production' && !value.REDIS_URL) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['REDIS_URL'],
+      message: 'REDIS_URL is required in production and must use rediss://',
+    });
+  }
+
+  if (!value.REDIS_URL && !value.REDIS_HOST) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['REDIS_URL'],
+      message: 'Set REDIS_URL, or REDIS_HOST for local development only',
+    });
+  }
 });
 
 const parsed = envSchema.safeParse(process.env);
