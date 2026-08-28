@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import type { Request, Response } from 'express';
 import { env } from '../config/env.js';
 import {
@@ -31,16 +30,6 @@ const proxiedSessionCookieOptions = {
   path: '/',
 };
 
-function renderHandoffForm(action: string, code: string) {
-  const nonce = crypto.randomBytes(16).toString('base64');
-  const actionOrigin = new URL(action).origin;
-
-  return {
-    contentSecurityPolicy: `default-src 'none'; script-src 'nonce-${nonce}'; form-action ${actionOrigin}; base-uri 'none'`,
-    html: `<!doctype html><html><head><meta charset="utf-8"><title>Signing in…</title></head><body><form id="session-handoff" method="post" action="${action}"><input type="hidden" name="code" value="${code}"></form><script nonce="${nonce}">document.getElementById('session-handoff').submit();</script><noscript><button form="session-handoff" type="submit">Continue</button></noscript></body></html>`,
-  };
-}
-
 export async function googleLogin(req: Request, res: Response) {
   const state = createOAuthState();
 
@@ -68,20 +57,19 @@ export async function googleCallback(req: Request, res: Response) {
 
     res.clearCookie('oauth_state', directOAuthCookieOptions);
 
-    const handoffUrl = new URL('/api/auth/session/complete', env.FRONTEND_URL).toString();
+    const handoffUrl = new URL('/auth/complete', env.FRONTEND_URL);
+    handoffUrl.searchParams.set('handoff', handoffCode);
 
     logger.info(
       {
         userId: user.id,
         handoff: 'created',
-        redirectPath: '/api/auth/session/complete',
+        redirectPath: '/auth/complete',
       },
       'Google OAuth completed and same-origin session handoff was created',
     );
 
-    const handoffForm = renderHandoffForm(handoffUrl, handoffCode);
-    res.set('Content-Security-Policy', handoffForm.contentSecurityPolicy);
-    return res.status(200).type('html').send(handoffForm.html);
+    return res.redirect(handoffUrl.toString());
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'Authentication failed';
@@ -131,7 +119,7 @@ export async function completeSessionHandoff(req: Request, res: Response) {
       'Same-origin authentication cookie was issued',
     );
 
-    return res.redirect(`${env.FRONTEND_URL}/dashboard`);
+    return sendSuccess(res, { completed: true });
   } catch (error) {
     logger.error({ error }, 'Failed to complete authentication handoff');
     return sendError(res, 'AUTH_HANDOFF_FAILED', 'Authentication is temporarily unavailable', 503);

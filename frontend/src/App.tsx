@@ -7,6 +7,7 @@ import { ScheduledEmails } from './pages/ScheduledEmails';
 import { SentEmails } from './pages/SentEmails';
 import { FailedEmails } from './pages/FailedEmails';
 import { ComposeEmail } from './pages/ComposeEmail';
+import { OAuthComplete } from './pages/OAuthComplete';
 
 function ProtectedRoutes() {
   const { user, loading, logout } = useAuth();
@@ -38,6 +39,7 @@ export function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/auth/complete" element={<OAuthComplete />} />
         <Route path="/*" element={<ProtectedRoutes />} />
       </Routes>
     </BrowserRouter>

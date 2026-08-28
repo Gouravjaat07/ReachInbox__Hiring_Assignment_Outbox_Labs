@@ -17,6 +17,7 @@ async function unwrap<T>(promise: Promise<{ data: ApiResponse<T> }>) {
 
 export const authApi = {
   me: () => unwrap<User>(api.get('/auth/me')),
+  completeHandoff: (code: string) => unwrap<{ completed: boolean }>(api.post('/auth/session/complete', { code })),
   logout: () => unwrap<{ loggedOut: boolean }>(api.post('/auth/logout')),
 };
 
