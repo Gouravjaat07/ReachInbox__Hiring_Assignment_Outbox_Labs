@@ -8,6 +8,10 @@ function handoffKey(code: string) {
   return `${HANDOFF_KEY_PREFIX}${code}`;
 }
 
+function validateHandoffCode(code: string) {
+  return /^[a-f0-9]{64}$/i.test(code);
+}
+
 export async function createAuthHandoff(userId: string) {
   const code = crypto.randomBytes(32).toString('hex');
   await redis.set(handoffKey(code), userId, 'EX', HANDOFF_TTL_SECONDS);
@@ -15,6 +19,10 @@ export async function createAuthHandoff(userId: string) {
 }
 
 export async function consumeAuthHandoff(code: string) {
+  if (!validateHandoffCode(code)) {
+    return null;
+  }
+
   const result = await redis.eval(
     "local value = redis.call('GET', KEYS[1]); if value then redis.call('DEL', KEYS[1]); end; return value;",
     1,

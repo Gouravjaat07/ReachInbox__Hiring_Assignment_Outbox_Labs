@@ -10,13 +10,24 @@ import { ComposeEmail } from './pages/ComposeEmail';
 import { OAuthComplete } from './pages/OAuthComplete';
 
 function ProtectedRoutes() {
-  const { user, loading, logout } = useAuth();
+  const { user, loading, error, logout, refreshAuth } = useAuth();
 
   if (loading) {
     return <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">Loading ReachInbox...</div>;
   }
 
   if (!user) {
+    if (error) {
+      return (
+        <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-950 px-4 text-center text-white">
+          <p>{error}</p>
+          <button className="rounded bg-white px-4 py-2 font-semibold text-slate-950" onClick={refreshAuth}>
+            Retry
+          </button>
+        </div>
+      );
+    }
+
     return <Navigate to="/login" replace />;
   }
 

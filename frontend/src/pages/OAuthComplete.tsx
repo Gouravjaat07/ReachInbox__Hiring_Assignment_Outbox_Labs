@@ -12,7 +12,7 @@ export function OAuthComplete() {
     if (started.current) return;
     started.current = true;
 
-    const handoff = new URLSearchParams(location.search).get('handoff');
+    const handoff = new URLSearchParams(location.hash.startsWith('#') ? location.hash.slice(1) : location.hash).get('handoff');
     // Remove the short-lived, one-time handoff code before sending the request.
     window.history.replaceState(window.history.state, '', '/auth/complete');
 
@@ -26,7 +26,7 @@ export function OAuthComplete() {
     authApi.completeHandoff(handoff)
       .then(() => navigate('/dashboard', { replace: true }))
       .catch(() => setFailed(true));
-  }, [location.search, navigate]);
+  }, [location.hash, navigate]);
 
   if (failed) {
     return (

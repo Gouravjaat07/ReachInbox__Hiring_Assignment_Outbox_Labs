@@ -3,11 +3,11 @@ import type { Worker } from 'bullmq';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { prisma } from './config/database.js';
-import { redisConnection } from './config/redis.js';
-import { emailQueue } from './queues/email.queue.js';
+import { getRedisConnectionSummary, redisConnection, verifyRedisRoundTrip } from './config/redis.js';
+import { closeEmailQueue } from './queues/email.queue.js';
 import { logger } from './utils/logger.js';
 import { reconcilePendingEmails } from './services/scheduling.service.js';
-import { startEmailWorker } from './workers/email.worker.js';
+import { closeEmailWorker, startEmailWorker } from './workers/email.worker.js';
 
 const app = createApp();
 
@@ -32,9 +32,9 @@ async function startServer() {
 
       const results = await Promise.allSettled([
         resources.server ? closeServer(resources.server) : Promise.resolve(),
-        resources.worker ? resources.worker.close() : Promise.resolve(),
-        emailQueue.close(),
-        redisConnection.disconnect(),
+        resources.worker ? closeEmailWorker(resources.worker) : Promise.resolve(),
+        closeEmailQueue(),
+        redisConnection.quit(),
         prisma.$disconnect(),
       ]);
       if (workerRetryTimer) clearInterval(workerRetryTimer);
@@ -61,6 +61,13 @@ async function startServer() {
   resources.server = app.listen(env.PORT, () => {
     logger.info({ port: env.PORT }, 'Backend listening');
   });
+
+  try {
+    await verifyRedisRoundTrip(redisConnection);
+    logger.info({ ...getRedisConnectionSummary() }, 'Redis startup round-trip check passed');
+  } catch (error) {
+    logger.error({ error, ...getRedisConnectionSummary() }, 'Redis startup round-trip check failed; worker startup will retry');
+  }
 
   const startWorkerWithRetry = async () => {
     if (resources.worker) return;

@@ -32,10 +32,30 @@ const googleCallbackUrlSchema = z.string().url().superRefine((value, context) =>
   }
 });
 
-const redisUrlSchema = z
-  .string()
-  .url()
-  .refine((value) => new URL(value).protocol === 'rediss:', 'REDIS_URL must use the rediss:// protocol');
+const redisUrlSchema = z.string().url().superRefine((value, context) => {
+  const url = new URL(value);
+
+  if (url.protocol !== 'redis:' && url.protocol !== 'rediss:') {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'REDIS_URL must use redis:// or rediss://',
+    });
+  }
+
+  if (!url.hostname) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'REDIS_URL must include a hostname',
+    });
+  }
+
+  if (url.hash || url.search) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'REDIS_URL must not include query parameters or fragments',
+    });
+  }
+});
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -43,10 +63,9 @@ const envSchema = z.object({
   FRONTEND_URL: frontendUrlSchema,
   DATABASE_URL: z.string().min(1),
   REDIS_URL: redisUrlSchema.optional(),
-  // Legacy local-development fallback. Production must use REDIS_URL.
   REDIS_HOST: z.string().min(1).optional(),
   REDIS_PORT: z.coerce.number().int().positive().optional(),
-  REDIS_PASSWORD: z.string().optional().default(''),
+  REDIS_PASSWORD: z.string().min(1).optional(),
   GOOGLE_CLIENT_ID: z.string().min(1),
   GOOGLE_CLIENT_SECRET: z.string().min(1),
   GOOGLE_CALLBACK_URL: googleCallbackUrlSchema,
@@ -70,20 +89,22 @@ const envSchema = z.object({
   COOKIE_SECRET: z.string().min(16),
   UPLOAD_MAX_SIZE_MB: z.coerce.number().int().positive().default(5),
 }).superRefine((value, context) => {
-  if (value.NODE_ENV === 'production' && !value.REDIS_URL) {
+  if (!value.REDIS_URL && (!value.REDIS_HOST || !value.REDIS_PORT)) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ['REDIS_URL'],
-      message: 'REDIS_URL is required in production and must use rediss://',
+      path: ['REDIS_HOST'],
+      message: 'Set REDIS_URL or both REDIS_HOST and REDIS_PORT',
     });
   }
 
-  if (!value.REDIS_URL && !value.REDIS_HOST) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['REDIS_URL'],
-      message: 'Set REDIS_URL, or REDIS_HOST for local development only',
-    });
+  if (value.NODE_ENV === 'production') {
+    if (!value.REDIS_HOST || !value.REDIS_PORT || !value.REDIS_PASSWORD) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['REDIS_HOST'],
+        message: 'REDIS_HOST, REDIS_PORT, and REDIS_PASSWORD are required in production',
+      });
+    }
   }
 });
 

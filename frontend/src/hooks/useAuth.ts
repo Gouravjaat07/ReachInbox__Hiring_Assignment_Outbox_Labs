@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { authApi } from '../services/api';
+import { useCallback, useEffect, useState } from 'react';
+import { ApiError, authApi } from '../services/api';
 import type { User } from '../types';
 
 export function useAuth() {
@@ -7,7 +7,10 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const refreshAuth = useCallback(() => {
+    setLoading(true);
+    setError(null);
+
     let active = true;
     authApi
       .me()
@@ -16,10 +19,15 @@ export function useAuth() {
           setUser(currentUser);
         }
       })
-      .catch(() => {
-        if (active) {
+      .catch((err: unknown) => {
+        if (!active) return;
+
+        if (err instanceof ApiError && err.status === 401) {
           setUser(null);
+          return;
         }
+
+        setError('Authentication service is temporarily unavailable. Please retry.');
       })
       .finally(() => {
         if (active) {
@@ -32,10 +40,15 @@ export function useAuth() {
     };
   }, []);
 
+  useEffect(() => {
+    return refreshAuth();
+  }, [refreshAuth]);
+
   const logout = async () => {
     try {
       await authApi.logout();
       setUser(null);
+      setError(null);
       window.location.href = '/login';
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to log out');
@@ -48,6 +61,7 @@ export function useAuth() {
     error,
     setUser,
     setError,
+    refreshAuth,
     logout,
   };
 }

@@ -30,6 +30,10 @@ const proxiedSessionCookieOptions = {
   path: '/',
 };
 
+function isValidHandoffCode(value: string) {
+  return /^[a-f0-9]{64}$/i.test(value);
+}
+
 export async function googleLogin(req: Request, res: Response) {
   const state = createOAuthState();
 
@@ -44,7 +48,13 @@ export async function googleLogin(req: Request, res: Response) {
 
 export async function googleCallback(req: Request, res: Response) {
   const { code, state } = req.query as Record<string, string | undefined>;
+  const oauthError = typeof req.query.error === 'string' ? req.query.error : undefined;
   const stateCookie = req.signedCookies?.oauth_state;
+
+  if (oauthError) {
+    res.clearCookie('oauth_state', directOAuthCookieOptions);
+    return res.redirect(new URL('/login', env.FRONTEND_URL).toString());
+  }
 
   if (!code || !state || !stateCookie || state !== stateCookie) {
     return sendError(res, 'AUTH_INVALID_STATE', 'Invalid OAuth state', 401);
@@ -58,13 +68,14 @@ export async function googleCallback(req: Request, res: Response) {
     res.clearCookie('oauth_state', directOAuthCookieOptions);
 
     const handoffUrl = new URL('/auth/complete', env.FRONTEND_URL);
-    handoffUrl.searchParams.set('handoff', handoffCode);
+    handoffUrl.hash = new URLSearchParams({ handoff: handoffCode }).toString();
 
     logger.info(
       {
         userId: user.id,
         handoff: 'created',
         redirectPath: '/auth/complete',
+        handoffTransport: 'fragment',
       },
       'Google OAuth completed and same-origin session handoff was created',
     );
@@ -97,7 +108,7 @@ export async function googleCallback(req: Request, res: Response) {
 
 export async function completeSessionHandoff(req: Request, res: Response) {
   const code = typeof req.body?.code === 'string' ? req.body.code : undefined;
-  if (!code) {
+  if (!code || !isValidHandoffCode(code)) {
     return sendError(res, 'AUTH_INVALID_HANDOFF', 'Invalid authentication handoff', 401);
   }
 

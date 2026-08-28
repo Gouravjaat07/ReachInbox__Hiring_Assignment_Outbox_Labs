@@ -3,6 +3,7 @@ import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { env, isProduction } from './config/env.js';
+import { getRedisClientState, getRedisConnectionSummary, redisConnection } from './config/redis.js';
 import { logger } from './utils/logger.js';
 import { authRouter } from './routes/auth.routes.js';
 import { campaignRouter } from './routes/campaign.routes.js';
@@ -42,7 +43,20 @@ export function createApp() {
 });
 
   app.get('/api/health', (_req, res) => {
-    res.json({ success: true, data: { status: 'ok' } });
+    const redis = {
+      ...getRedisConnectionSummary(),
+      state: getRedisClientState(redisConnection),
+    };
+    const healthy = redis.state === 'ready';
+
+    res.status(healthy ? 200 : 503).json({
+      success: healthy,
+      data: {
+        status: healthy ? 'ok' : 'degraded',
+        redis,
+      },
+      ...(healthy ? {} : { error: { code: 'REDIS_UNAVAILABLE', message: 'Redis is not ready' } }),
+    });
   });
 
   app.use('/api/auth', authRouter);

@@ -2,17 +2,43 @@ import axios from 'axios';
 import type { ApiResponse, Campaign, Email, Sender, User } from '../types';
 import { API_BASE_URL } from '../config/api';
 
+export class ApiError extends Error {
+  status?: number;
+  apiCode?: string;
+
+  constructor(message: string, status?: number, apiCode?: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.apiCode = apiCode;
+  }
+}
+
 export const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
 });
 
 async function unwrap<T>(promise: Promise<{ data: ApiResponse<T> }>) {
-  const response = await promise;
-  if (!response.data.success) {
-    throw new Error(response.data.error?.message ?? 'Request failed');
+  try {
+    const response = await promise;
+    if (!response.data.success) {
+      throw new ApiError(response.data.error?.message ?? 'Request failed', 200, response.data.error?.code);
+    }
+    return response.data.data as T;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const message = (error.response?.data as { error?: { message?: string } } | undefined)?.error?.message ?? error.message;
+      const apiCode = (error.response?.data as { error?: { code?: string } } | undefined)?.error?.code;
+      throw new ApiError(message, error.response?.status, apiCode);
+    }
+
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    throw new ApiError('Request failed');
   }
-  return response.data.data as T;
 }
 
 export const authApi = {

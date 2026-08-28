@@ -195,7 +195,9 @@ NODE_ENV=development
 PORT=5000
 FRONTEND_URL=http://localhost:5173
 DATABASE_URL=postgresql://<user>:<password>@localhost:5432/<database>
-REDIS_URL=rediss://default:<upstash-password>@<upstash-host>:6379
+REDIS_HOST=<upstash-host>
+REDIS_PORT=6379
+REDIS_PASSWORD=<upstash-password>
 GOOGLE_CLIENT_ID=<google-client-id>
 GOOGLE_CLIENT_SECRET=<google-client-secret>
 GOOGLE_CALLBACK_URL=http://localhost:5000/api/auth/google/callback
@@ -219,7 +221,7 @@ MAX_EMAILS_PER_HOUR=200
 UPLOAD_MAX_SIZE_MB=5
 ```
 
-`DATABASE_URL` points to PostgreSQL. In production, `REDIS_URL` configures the TLS-authenticated Upstash Redis/BullMQ connection and must use `rediss://`. OAuth variables configure Google client identity and the callback. `FRONTEND_URL` controls CORS and the post-login redirect. JWT/cookie secrets sign authentication data. SMTP variables configure Ethereal. Worker and rate-limit values control concurrency, retries, recovery, and sender throughput.
+`DATABASE_URL` points to PostgreSQL. In production, `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` configure the TLS-authenticated Upstash Redis/BullMQ connection. `REDIS_URL` remains supported for local or alternate environments, but production host configuration always enables TLS. OAuth variables configure Google client identity and the callback. `FRONTEND_URL` controls CORS and the post-login redirect. JWT/cookie secrets sign authentication data. SMTP variables configure Ethereal. Worker and rate-limit values control concurrency, retries, recovery, and sender throughput.
 
 ### Frontend
 
@@ -306,11 +308,12 @@ Pre-deploy Command: npx prisma migrate deploy
 Start Command: npm run start
 ```
 
-The start command runs `node dist/server.js`, which owns Express and exactly one BullMQ worker. Set `NODE_ENV=production`, the hosted PostgreSQL `DATABASE_URL`, Railway Redis host/port/password, and these production URL variables:
+The start command runs `node dist/server.js`, which owns Express and exactly one BullMQ worker. Set `NODE_ENV=production`, the hosted PostgreSQL `DATABASE_URL`, and these production URL and Redis variables:
 
 ```dotenv
 FRONTEND_URL=https://reach-inbox-hiring-assignment-outbo.vercel.app
 GOOGLE_CALLBACK_URL=https://reachinbox-api-production-749e.up.railway.app/api/auth/google/callback
+REDIS_URL=rediss://default:<upstash-password>@simple-mullet-178922.upstash.io:6379
 ```
 
 Supply Ethereal settings through the SMTP variables above; do not hard-code them.
@@ -336,7 +339,7 @@ http://localhost:5000/api/auth/google/callback
 https://reachinbox-api-production-749e.up.railway.app/api/auth/google/callback
 ```
 
-OAuth starts directly on Railway so its short-lived CSRF-state cookie can return from Google to the Railway callback. After a successful callback, Railway redirects the browser to Vercel's `/auth/complete` page with a 60-second single-use opaque Redis handoff. The frontend immediately removes that handoff from the address bar and posts it to Vercel's same-origin `/api/auth/session/complete` rewrite. The handoff is not a JWT or session token. That response sets the signed auth cookie for Vercel, and all later `/api` requests are proxied to Railway. Development and production session cookies are HTTP-only and `SameSite=Lax`; production cookies are also `Secure`. CORS allows only the configured `FRONTEND_URL` with credentials enabled; wildcard origins are not used.
+OAuth starts directly on Railway so its short-lived CSRF-state cookie can return from Google to the Railway callback. After a successful callback, Railway redirects the browser to Vercel's `/auth/complete` page with a 60-second single-use opaque Redis handoff in the URL fragment (`#handoff=...`, not a query parameter). The frontend immediately removes that fragment and posts the handoff to Vercel's same-origin `/api/auth/session/complete` rewrite. The handoff is not a JWT or reusable session token. That response sets the signed auth cookie for Vercel, and all later `/api` requests are proxied to Railway. Development and production session cookies are HTTP-only and `SameSite=Lax`; production cookies are also `Secure`. CORS allows only the configured `FRONTEND_URL` with credentials enabled; wildcard origins are not used.
 
 Railway terminates TLS through a proxy; the API trusts exactly one proxy in production so Express retains the original HTTPS request context. The callback logs only the authenticated user ID and cookie attributes (never a token), while a rejected authenticated request logs whether the signed cookie was absent or could not be verified. These entries are safe to use when diagnosing a deployed login.
 
@@ -345,7 +348,8 @@ Railway terminates TLS through a proxy; the API trusts exactly one proxy in prod
 ### Authentication
 
 - `GET /api/auth/google` - begin Google OAuth.
-- `GET /api/auth/google/callback` - complete OAuth and set the signed auth cookie.
+- `GET /api/auth/google/callback` - complete OAuth and issue a one-time Redis handoff.
+- `POST /api/auth/session/complete` - consume the one-time handoff and set the signed auth cookie.
 - `GET /api/auth/me` - return the authenticated user.
 - `POST /api/auth/logout` - clear authentication cookies.
 

@@ -1,7 +1,7 @@
 import { Worker } from 'bullmq';
 import type { Job } from 'bullmq';
 import { env } from '../config/env.js';
-import { createBullConnection } from '../config/redis.js';
+import { closeRedisClient, createBullRedisClient } from '../config/redis.js';
 import { EMAIL_QUEUE_NAME } from '../queues/queue.constants.js';
 import { claimEmailForProcessing, finalizeFailedEmail, finalizeSentEmail } from '../services/idempotency.service.js';
 import { reserveSendWindow } from '../services/rate-limit.service.js';
@@ -9,6 +9,8 @@ import { isRetryableSmtpError, sendEmailMail, verifyMailTransport } from '../ser
 import { emailRepository } from '../repositories/email.repository.js';
 import { emailQueue, deterministicEmailJobId } from '../queues/email.queue.js';
 import { logger } from '../utils/logger.js';
+
+const workerRedisByWorker = new WeakMap<Worker, ReturnType<typeof createBullRedisClient>>();
 
 async function rescheduleEmail(emailId: string, scheduledAt: Date) {
   const nextJobId = `${deterministicEmailJobId(emailId)}-rescheduled-${scheduledAt.getTime()}`;
@@ -75,10 +77,14 @@ async function processEmailJob(job: Job<{ emailId: string }>) {
 export async function startEmailWorker() {
   logger.info({ queue: EMAIL_QUEUE_NAME, concurrency: env.WORKER_CONCURRENCY }, 'Email worker starting');
 
+  const workerRedisConnection = createBullRedisClient('worker');
+
   const worker = new Worker(EMAIL_QUEUE_NAME, processEmailJob, {
-    connection: createBullConnection(),
+    connection: workerRedisConnection,
     concurrency: env.WORKER_CONCURRENCY,
   });
+
+  workerRedisByWorker.set(worker, workerRedisConnection);
 
   worker.on('error', (error) => {
     logger.error({ error, queue: EMAIL_QUEUE_NAME }, 'Email worker Redis or processor error');
@@ -99,6 +105,7 @@ export async function startEmailWorker() {
     await worker.close().catch((closeError: unknown) => {
       logger.error({ error: closeError }, 'Failed to close BullMQ worker after startup error');
     });
+    await closeRedisClient(workerRedisConnection);
     throw error;
   }
 
@@ -113,4 +120,13 @@ export async function startEmailWorker() {
   });
 
   return worker;
+}
+
+export async function closeEmailWorker(worker: Worker) {
+  await worker.close();
+  const redisConnection = workerRedisByWorker.get(worker);
+  if (redisConnection) {
+    workerRedisByWorker.delete(worker);
+    await closeRedisClient(redisConnection);
+  }
 }
