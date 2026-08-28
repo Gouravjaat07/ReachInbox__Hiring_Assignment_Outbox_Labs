@@ -85,7 +85,7 @@ Express API (same Node.js process)
 	      Ethereal SMTP
 ```
 
-In production, Render runs one Web Service using `node dist/server.js`. `backend/src/server.ts` starts Express and exactly one BullMQ worker in that process. A separate Render Background Worker is not required by this repository.
+In production, Railway runs `node dist/server.js`. `backend/src/server.ts` starts Express and exactly one BullMQ worker in that process. A separate worker service is not required by this repository.
 
 ## Scheduling Flow
 
@@ -166,7 +166,7 @@ The hourly counter is keyed by sender and UTC hour. The minimum-delay key is als
 
 ## SMTP / Ethereal
 
-Ethereal is a test SMTP service: messages are captured for inspection rather than delivered to real inboxes. Create an account at [ethereal.email](https://ethereal.email), choose **Create Ethereal Account**, and copy the generated SMTP host, port, username, and password into local or Render environment settings. Do not commit those values.
+Ethereal is a test SMTP service: messages are captured for inspection rather than delivered to real inboxes. Create an account at [ethereal.email](https://ethereal.email), choose **Create Ethereal Account**, and copy the generated SMTP host, port, username, and password into local or Railway environment settings. Do not commit those values.
 
 The application uses Nodemailer with a reusable transporter object but does not enable pooling. Nodemailer opens a fresh SMTP connection for each non-pooled send and the application discards the transporter after a send failure. For port 587, use `SMTP_SECURE=false` and `SMTP_REQUIRE_TLS=true`. SMTP verification is advisory and cannot prevent API startup.
 
@@ -229,7 +229,7 @@ UPLOAD_MAX_SIZE_MB=5
 VITE_API_URL=http://localhost:5000
 ```
 
-The frontend Axios client uses `${VITE_API_URL}/api` and `withCredentials: true`. For Vercel, set `VITE_API_URL` to the deployed Render API origin and rebuild.
+The frontend normalizes `VITE_API_URL` to a backend origin before constructing API and Google-login URLs, and Axios uses `withCredentials: true`. For Vercel, set `VITE_API_URL` to the deployed Railway API origin and rebuild.
 
 ## Local Development
 
@@ -297,9 +297,9 @@ npm run preview --workspace frontend
 
 ## Production Deployment
 
-### Render backend
+### Railway backend
 
-Deploy one Render Web Service with:
+Deploy one Railway service with:
 
 ```text
 Root Directory: backend
@@ -308,16 +308,23 @@ Pre-deploy Command: npx prisma migrate deploy
 Start Command: npm run start
 ```
 
-The start command runs `node dist/server.js`, which owns Express and exactly one BullMQ worker. Set `NODE_ENV=production`, the hosted PostgreSQL `DATABASE_URL`, Render Redis host/port/password, the production `FRONTEND_URL`, and the production `GOOGLE_CALLBACK_URL`. Supply Ethereal settings through the SMTP variables above; do not hard-code them.
+The start command runs `node dist/server.js`, which owns Express and exactly one BullMQ worker. Set `NODE_ENV=production`, the hosted PostgreSQL `DATABASE_URL`, Railway Redis host/port/password, and these production URL variables:
 
-Render Redis/Key Value should use the `noeviction` policy. With `allkeys-lru`, Redis may evict delayed BullMQ jobs under memory pressure. This is separate from SMTP connectivity and cannot be safely corrected by application code.
+```dotenv
+FRONTEND_URL=https://reach-inbox-hiring-assignment-outbo.vercel.app
+GOOGLE_CALLBACK_URL=https://reachinbox-api-production-749e.up.railway.app/api/auth/google/callback
+```
+
+Supply Ethereal settings through the SMTP variables above; do not hard-code them.
+
+Railway Redis should use the `noeviction` policy where configurable. With `allkeys-lru`, Redis may evict delayed BullMQ jobs under memory pressure. This is separate from SMTP connectivity and cannot be safely corrected by application code.
 
 ### Vercel frontend
 
 Set the Vercel build variable:
 
 ```text
-VITE_API_URL=https://<render-service>.onrender.com
+VITE_API_URL=https://reachinbox-api-production-749e.up.railway.app
 ```
 
 Never put backend credentials or secrets in `VITE_*` variables. Vercel must be redeployed after changing build-time variables.
@@ -328,10 +335,10 @@ Register both callback URLs in the Google Cloud OAuth client:
 
 ```text
 http://localhost:5000/api/auth/google/callback
-https://<render-service>.onrender.com/api/auth/google/callback
+https://reachinbox-api-production-749e.up.railway.app/api/auth/google/callback
 ```
 
-Development cookies are HTTP-only, `Secure=false`, and `SameSite=Lax`. Production cookies are HTTP-only, `Secure=true`, and `SameSite=None` because the Vercel frontend and Render API are cross-site. CORS allows only the configured `FRONTEND_URL` with credentials enabled; wildcard origins are not used.
+Development cookies are HTTP-only, `Secure=false`, and `SameSite=Lax`. Production cookies are HTTP-only, `Secure=true`, and `SameSite=None` because the Vercel frontend and Railway API are cross-site. CORS allows only the configured `FRONTEND_URL` with credentials enabled; wildcard origins are not used.
 
 ## API Reference
 

@@ -51,7 +51,7 @@ async function startServer() {
     return shutdownPromise;
   };
 
-  // Register before awaiting SMTP/Redis startup so Render can terminate a
+  // Register before awaiting SMTP/Redis startup so the hosting platform can terminate a
   // deploying instance cleanly even while a dependency is still connecting.
   process.once('SIGINT', () => void shutdown('SIGINT'));
   process.once('SIGTERM', () => void shutdown('SIGTERM'));

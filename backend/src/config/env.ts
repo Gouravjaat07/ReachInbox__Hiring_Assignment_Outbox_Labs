@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import { z } from 'zod';
+import { GOOGLE_CALLBACK_PATH } from './auth.js';
 
 dotenv.config();
 
@@ -16,6 +17,21 @@ const frontendUrlSchema = z
   // CORS compares the request Origin, which never contains a path or trailing slash.
   .transform((value) => new URL(value).origin);
 
+const googleCallbackUrlSchema = z.string().url().superRefine((value, context) => {
+  const url = new URL(value);
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'GOOGLE_CALLBACK_URL must use http or https' });
+  }
+
+  if (url.pathname !== GOOGLE_CALLBACK_PATH || url.search || url.hash) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `GOOGLE_CALLBACK_URL must be the exact callback endpoint: ${GOOGLE_CALLBACK_PATH}`,
+    });
+  }
+});
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(5000),
@@ -26,7 +42,7 @@ const envSchema = z.object({
   REDIS_PASSWORD: z.string().optional().default(''),
   GOOGLE_CLIENT_ID: z.string().min(1),
   GOOGLE_CLIENT_SECRET: z.string().min(1),
-  GOOGLE_CALLBACK_URL: z.string().url(),
+  GOOGLE_CALLBACK_URL: googleCallbackUrlSchema,
   JWT_SECRET: z.string().min(16),
   SMTP_HOST: z.string().min(1),
   SMTP_PORT: z.coerce.number().int().positive(),

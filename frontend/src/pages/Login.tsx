@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { GOOGLE_LOGIN_URL } from '../config/api';
 
 export function Login() {
   const [loading, setLoading] = useState(false);
@@ -7,7 +8,7 @@ export function Login() {
   const handleLogin = () => {
     try {
       setLoading(true);
-      window.location.href = `${import.meta.env.VITE_API_URL}/api/auth/google`;
+      window.location.assign(GOOGLE_LOGIN_URL);
     } catch {
       setLoading(false);
       setError('Unable to start Google sign-in.');
