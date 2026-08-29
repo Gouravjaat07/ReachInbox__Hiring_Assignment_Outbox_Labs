@@ -1,12 +1,105 @@
 # ReachInbox - Email Scheduler
 
-ReachInbox is a full-stack email scheduling application for creating campaigns, parsing lead lists, scheduling delayed delivery, and inspecting delivery outcomes. It uses React/Vite, an Express API, PostgreSQL with Prisma, Redis with BullMQ, Nodemailer, Ethereal SMTP, and Google OAuth.
+ReachInbox is a full-stack email scheduling app for creating campaigns, scheduling delayed sends, tracking email state, and reviewing delivery outcomes. It uses React/Vite, Express, PostgreSQL with Prisma, Redis with BullMQ, Nodemailer, Ethereal SMTP, and Google OAuth.
 
-## Overview
+## 🚀 Quick Start
 
-The application persists campaign and email records in PostgreSQL before creating delayed BullMQ jobs. A worker running in the same Node.js process as the Express API claims each scheduled email atomically, enforces sender-level limits through Redis, sends through Ethereal SMTP, and records `SENT` or `FAILED` in PostgreSQL.
+### Prerequisites
 
-The repository is an npm workspaces monorepo with `backend` and `frontend` packages.
+- Node.js 22 or newer
+- Docker Desktop and Docker Compose
+- A Google OAuth client with the local callback URL registered
+- An Ethereal account and SMTP credentials
+
+### 1. Clone and install
+
+```bash
+git clone <repository-url>
+cd ReachInbox__Hiring_Assignment_Outbox_Labs
+npm install
+```
+
+### 2. Configure environment
+
+Copy `.env.example` to `.env` and fill in your local values for PostgreSQL, Redis, Google OAuth, JWT, cookies, and Ethereal SMTP.
+
+### 3. Start local services
+
+```bash
+docker compose up -d postgres redis
+```
+
+### 4. Run Prisma setup
+
+```bash
+npm run prisma:generate
+npm run prisma:migrate
+```
+
+### 5. Start the application
+
+```bash
+npm run dev
+```
+
+This starts the backend and frontend together. The app is available at:
+
+```text
+http://localhost:5173
+```
+
+## ✨ Key Features
+
+- Campaign and sender management with PostgreSQL persistence
+- Delayed email scheduling through BullMQ and Redis
+- Worker-based processing with retry and failure handling
+- Per-sender rate limiting and hourly send caps
+- Google OAuth sign-in with secure cookie-based session flow
+- SMTP diagnostics and email-state inspection tooling
+- CSV/TXT upload and pasted lead parsing for bulk sends
+- Sent and failed email tracking with Ethereal preview links where available
+
+## 🛠️ Tech Stack
+
+| Area | Stack |
+| --- | --- |
+| Frontend | React + Vite + TypeScript |
+| Backend | Express + Node.js |
+| Database | PostgreSQL + Prisma |
+| Queue & scheduling | Redis + BullMQ |
+| SMTP | Nodemailer + Ethereal SMTP |
+| Authentication | Google OAuth 2.0 |
+| Deployment | Railway (backend) + Vercel (frontend) |
+
+## 🏗️ Architecture
+
+```text
+React/Vite frontend
+    |
+    | authenticated HTTP requests
+    v
+Express API (same Node.js process)
+    |
+    +---- PostgreSQL / Prisma
+    |       source of truth for users, campaigns, senders, emails
+    |
+    +---- Redis
+    |       |
+    |       +---- BullMQ delayed email jobs
+    |       +---- sender rate-limit keys
+    |
+    +---- BullMQ email worker
+                |
+                v
+            Nodemailer
+                |
+                v
+            Ethereal SMTP
+```
+
+The backend runs Express and the worker in the same Node.js process. Redis backs BullMQ delayed jobs and sender-level rate limiting; PostgreSQL stores the durable source of truth for scheduling and email state.
+
+## 📸 Screenshots
 
 ## Login Page
 
@@ -28,167 +121,91 @@ The repository is an npm workspaces monorepo with `backend` and `frontend` packa
 
 <img width="1467" height="706" alt="Screenshot 2026-08-26 081212" src="https://github.com/user-attachments/assets/a9b5a8bc-c781-4cfc-ab36-369b5951e7fa" />
 
-## Features
+## 📧 Email Scheduling Flow
 
-### Backend
+A scheduled email follows this path:
 
-- Google OAuth 2.0 authentication with signed, HTTP-only cookies.
-- Environment-driven CORS and OAuth callback/redirect URLs.
-- Campaign and sender persistence through Prisma.
-- Email scheduling with PostgreSQL as the source of truth.
-- BullMQ delayed jobs stored in Redis.
-- One BullMQ worker embedded in the Express server process.
-- Atomic email claiming and status transitions.
-- Bounded exponential retries for transient SMTP/network failures.
-- Permanent failure handling for non-retryable SMTP errors.
-- Deterministic job IDs and practical duplicate protection.
-- Per-sender hourly limits and minimum send spacing using an atomic Redis Lua script.
-- Startup and periodic reconciliation for missing jobs and stale processing claims.
-- Safe SMTP phase diagnostics and email-state inspection commands.
-- Lead parsing from pasted text, CSV, and TXT uploads with validation and deduplication.
+1. User creates a campaign and schedules sends
+2. The app writes the email and campaign records to PostgreSQL
+3. A delayed BullMQ job is created in Redis
+4. The worker picks up the job and claims the email state
+5. Rate-limit checks are enforced in Redis
+6. Nodemailer sends through Ethereal SMTP
+7. PostgreSQL is updated to `SENT` or `FAILED` based on the SMTP result
 
-### Frontend
+## 🔄 Persistence & Restart Recovery
 
-- Google sign-in entry point.
-- Protected dashboard routes.
-- Campaign overview and status counts.
-- Compose form with sender selection, subject, body, recipients, start time, delay, and hourly limit.
-- CSV/TXT upload and pasted lead input.
-- Scheduled email table, including currently processing emails.
-- Sent email table with Ethereal preview links when available.
-- Failed email table with attempt count, error, and failure time.
-- Loading, empty, refresh, and error states.
+- PostgreSQL is the durable source of truth for campaigns, senders, and email state
+- BullMQ jobs are stored in Redis and survive process restarts when configured correctly
+- Processing claims older than the configured timeout are reconciled automatically
+- Retryable failures return emails to `SCHEDULED` for reprocessing
+- Failed jobs or exhausted attempts end in `FAILED`
+- Deterministic job IDs and atomic claims provide practical duplicate protection
 
-## Architecture
+## ⚡ Rate Limiting & Worker Concurrency
 
-```text
-React/Vite frontend
-	|
-	| credentialed HTTP API requests
-	v
-Express API (same Node.js process)
-	|
-	+---- PostgreSQL / Prisma
-	|       source of truth for users, campaigns, senders, emails
-	|
-	+---- Redis
-	|       |
-	|       +---- BullMQ delayed email jobs
-	|       +---- atomic sender rate-limit keys
-	|
-	+---- BullMQ email worker
-		    |
-		    v
-		Nodemailer
-		    |
-		    v
-	      Ethereal SMTP
-```
+The worker uses `WORKER_CONCURRENCY` to process jobs concurrently. For each sender, the Redis Lua script atomically checks and reserves:
 
-In production, Railway runs `node dist/server.js`. `backend/src/server.ts` starts Express and exactly one BullMQ worker in that process. A separate worker service is not required by this repository.
+- the campaign hourly email quota
+- the minimum time gap between sends
 
-## Scheduling Flow
+Blocked jobs are rescheduled without marking the email as failed.
 
-```text
-User schedules a campaign
-	|
-	v
-POST /api/emails/schedule
-	|
-	v
-Validate request and sender ownership
-	|
-	v
-Create Campaign and Email rows in one PostgreSQL transaction
-	|
-	v
-Create deterministic delayed BullMQ jobs in Redis
-	|
-	v
-Scheduled time arrives
-	|
-	v
-Worker atomically claims SCHEDULED -> PROCESSING
-	|
-	v
-Reserve sender rate-limit window in Redis
-	|
-	+---- blocked: reschedule as SCHEDULED
-	|
-	v
-Nodemailer -> Ethereal SMTP
-	|
-	+---- success: PROCESSING -> SENT
-	|
-	+---- transient failure: PROCESSING -> SCHEDULED, BullMQ retries
-	|
-	+---- permanent/max-attempt failure: PROCESSING -> FAILED
-```
+## 🔐 Google OAuth / Authentication
 
-`startTime` is parsed as an ISO date. Each recipient receives `startTime + index * delayMs`; BullMQ receives the difference between that timestamp and the current time as its delay. This uses durable Redis-backed delayed jobs rather than `setTimeout`, in-memory timers, or one cron schedule per email. Jobs survive process memory loss and can be reconciled from PostgreSQL after a restart.
+- Google OAuth starts from the backend and completes through the configured callback URL
+- The app issues a signed, HTTP-only authentication cookie for the browser
+- The frontend uses the configured `FRONTEND_URL` for redirects and CORS
+- The callback flow is designed for the Railway + Vercel deployment split used in production
 
-## Email State Machine
+## 📩 SMTP / Ethereal
 
-The implemented email statuses are:
+Ethereal is the required fake SMTP service used by this project. It captures outgoing mail for inspection rather than delivering to real inboxes.
 
-```text
-SCHEDULED -> PROCESSING -> SENT
-		    |
-		    +-> SCHEDULED -> BullMQ retry
-		    |
-		    +-> FAILED
-```
+Create an account at [ethereal.email](https://ethereal.email), then copy the generated SMTP host, port, username, and password into your local or Railway environment variables.
 
-`SENT` is recorded only after `sendMail()` resolves successfully. A transient error such as `ETIMEDOUT`, `ECONNRESET`, `ECONNREFUSED`, `EAI_AGAIN`, `ENETUNREACH`, `EPIPE`, or `ESOCKET` is retryable. SMTP 4xx responses are also treated as temporary; authentication failures and permanent recipient responses are not blindly retried. `MAX_EMAIL_ATTEMPTS` bounds BullMQ retries.
+Important configuration details:
 
-PostgreSQL rows are never deleted when BullMQ jobs complete or fail. The API exposes scheduled/processing emails at `GET /api/emails/scheduled`, successful emails at `GET /api/emails/sent`, and final failures at `GET /api/emails/failed`.
+- `SMTP_HOST=smtp.ethereal.email`
+- `SMTP_PORT=587`
+- `SMTP_SECURE=false`
+- `SMTP_REQUIRE_TLS=true`
 
-## Persistence and Restart Recovery
+This combination is correct for Ethereal on port 587 and uses STARTTLS. SMTP verification is advisory and does not prevent the API from starting.
 
-- PostgreSQL is written before queue publication.
-- Each email stores `bullJobId`, `idempotencyKey`, `attempts`, status timestamps, errors, and an optional Ethereal preview URL.
-- Jobs use `email-<emailId>` as their initial deterministic ID.
-- Scheduling failures are reported and later reconciliation searches for `SCHEDULED` emails without a job ID.
-- Reconciliation runs on startup and periodically while the worker is available.
-- Processing claims older than `PROCESSING_TIMEOUT_MS` are recovered. Claims below `MAX_EMAIL_ATTEMPTS` return to `SCHEDULED`; exhausted claims become `FAILED`.
-- Atomic database claims prevent two workers from processing the same `SCHEDULED` row concurrently.
-
-There is an unavoidable distributed-systems boundary: if an SMTP server accepts a message and the process crashes before PostgreSQL is updated, mathematical exactly-once delivery cannot be guaranteed without provider-level idempotency. This project provides practical duplicate protection through atomic claims, deterministic job IDs, durable state, and bounded retries.
-
-## Rate Limiting and Concurrency
-
-The worker uses `WORKER_CONCURRENCY` BullMQ consumers. For each sender, the Redis Lua script atomically checks and reserves:
-
-- The campaign hourly limit.
-- `MIN_DELAY_BETWEEN_EMAILS_MS` between sends.
-
-The hourly counter is keyed by sender and UTC hour. The minimum-delay key is also per sender, so concurrent jobs cannot reserve the same send window. A blocked job is returned to `SCHEDULED` and receives a delayed rescheduled job. Rate limiting does not mark an email as failed.
-
-## SMTP / Ethereal
-
-Ethereal is a test SMTP service: messages are captured for inspection rather than delivered to real inboxes. Create an account at [ethereal.email](https://ethereal.email), choose **Create Ethereal Account**, and copy the generated SMTP host, port, username, and password into local or Railway environment settings. Do not commit those values.
-
-The application uses Nodemailer with a reusable transporter object but does not enable pooling. Nodemailer opens a fresh SMTP connection for each non-pooled send and the application discards the transporter after a send failure. For port 587, use `SMTP_SECURE=false` and `SMTP_REQUIRE_TLS=true`. SMTP verification is advisory and cannot prevent API startup.
-
-Run the compiled phase-specific diagnostic from the backend directory:
+Useful operational commands:
 
 ```bash
-npm run smtp:diagnose
+npm run smtp:diagnose --workspace backend
+npm run email:inspect --workspace backend -- <email-id>
 ```
 
-It reports DNS, TCP, SMTP greeting, STARTTLS, and authentication separately. A TCP timeout is reported as `SMTP TCP: FAIL` with `phase=tcp-connect`; it is not mislabeled as a TLS or authentication failure. After a successful send, Nodemailer/Ethereal may provide a preview URL, which is shown in the Sent view.
+## 🌐 Production Deployment
 
-Inspect one PostgreSQL email record without printing secrets:
+### Railway backend
 
-```bash
-npm run email:inspect -- <email-id>
+Deploy one Railway service with:
+
+```text
+Root Directory: backend
+Build Command: npm install && npx prisma generate && npm run build
+Pre-deploy Command: npx prisma migrate deploy
+Start Command: npm run start
 ```
 
-## Environment Variables
+Set `NODE_ENV=production`, the PostgreSQL `DATABASE_URL`, and the required Redis and OAuth variables.
 
-Create local files from the safe examples and keep real secrets out of Git. Backend variables are loaded by `backend/src/config/env.ts`; frontend variables are exposed to Vite only when prefixed with `VITE_`.
+### Vercel frontend
 
-### Backend
+Set the Vercel build variable:
+
+```text
+VITE_API_URL=https://reachinbox-api-production-749e.up.railway.app
+```
+
+## 🔧 Environment Configuration
+
+Backend environment variables:
 
 ```dotenv
 NODE_ENV=development
@@ -221,136 +238,37 @@ MAX_EMAILS_PER_HOUR=200
 UPLOAD_MAX_SIZE_MB=5
 ```
 
-`DATABASE_URL` points to PostgreSQL. In production, `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` configure the TLS-authenticated Upstash Redis/BullMQ connection. `REDIS_URL` remains supported for local or alternate environments, but production host configuration always enables TLS. OAuth variables configure Google client identity and the callback. `FRONTEND_URL` controls CORS and the post-login redirect. JWT/cookie secrets sign authentication data. SMTP variables configure Ethereal. Worker and rate-limit values control concurrency, retries, recovery, and sender throughput.
-
-### Frontend
+Frontend environment variable:
 
 ```dotenv
 VITE_API_URL=http://localhost:5000
 ```
 
-The frontend uses same-origin `/api` requests. Vite proxies them locally and Vercel proxies them to Railway in production, so the HTTP-only authentication cookie remains first-party. `VITE_API_URL` is used only to construct the top-level Google OAuth start URL and must be the backend origin. Axios uses `withCredentials: true`.
+Keep real credentials and secrets out of Git. The backend reads its variables from `backend/src/config/env.ts`; frontend variables are exposed only when prefixed with `VITE_`.
 
-## Local Development
-
-1. Install prerequisites
-   - Node.js 22 or newer
-   - Docker Desktop and Docker Compose
-   - A Google OAuth client with the local callback URI registered
-   - An Ethereal account and SMTP credentials
-
-2. Clone the repository and install dependencies
-
-```bash
-npm install
-```
-
-3. Configure the environment
-
-Copy `.env.example` to `.env` and fill in the local values for PostgreSQL, Redis, Google OAuth, JWT, cookie secrets, and Ethereal SMTP.
-
-4. Start the local database services
-
-```bash
-docker compose up -d postgres redis
-```
-
-5. Run the Prisma database setup
-
-```bash
-npm run prisma:generate
-npm run prisma:migrate
-```
-
-6. Start the app
-
-```bash
-npm run dev
-```
-
-This starts the backend and frontend together. The backend includes the worker process when using `server.ts`.
-
-7. Open the app
-
-Visit:
-
-```text
-http://localhost:5173
-```
-
-Sign in with Google to complete the local OAuth flow.
-
-## Production Deployment
-
-### Railway backend
-
-Deploy one Railway service with:
-
-```text
-Root Directory: backend
-Build Command: npm install && npx prisma generate && npm run build
-Pre-deploy Command: npx prisma migrate deploy
-Start Command: npm run start
-```
-
-The start command runs `node dist/server.js`, which owns Express and exactly one BullMQ worker. Set `NODE_ENV=production`, the hosted PostgreSQL `DATABASE_URL`, and these production URL and Redis variables:
-
-```dotenv
-FRONTEND_URL=https://reach-inbox-hiring-assignment-outbo.vercel.app
-GOOGLE_CALLBACK_URL=https://reachinbox-api-production-749e.up.railway.app/api/auth/google/callback
-REDIS_URL=rediss://default:<upstash-password>@simple-mullet-178922.upstash.io:6379
-```
-
-Supply Ethereal settings through the SMTP variables above; do not hard-code them.
-
-Railway Redis should use the `noeviction` policy where configurable. With `allkeys-lru`, Redis may evict delayed BullMQ jobs under memory pressure. This is separate from SMTP connectivity and cannot be safely corrected by application code.
-
-### Vercel frontend
-
-Set the Vercel build variable:
-
-```text
-VITE_API_URL=https://reachinbox-api-production-749e.up.railway.app
-```
-
-Never put backend credentials or secrets in `VITE_*` variables. Vercel must be redeployed after changing build-time variables.
-
-### Google OAuth and cookies
-
-Register both callback URLs in the Google Cloud OAuth client:
-
-```text
-http://localhost:5000/api/auth/google/callback
-https://reachinbox-api-production-749e.up.railway.app/api/auth/google/callback
-```
-
-OAuth starts directly on Railway so its short-lived CSRF-state cookie can return from Google to the Railway callback. After a successful callback, Railway redirects the browser to Vercel's `/auth/complete` page with a 60-second single-use opaque Redis handoff in the URL fragment (`#handoff=...`, not a query parameter). The frontend immediately removes that fragment and posts the handoff to Vercel's same-origin `/api/auth/session/complete` rewrite. The handoff is not a JWT or reusable session token. That response sets the signed auth cookie for Vercel, and all later `/api` requests are proxied to Railway. Development and production session cookies are HTTP-only and `SameSite=Lax`; production cookies are also `Secure`. CORS allows only the configured `FRONTEND_URL` with credentials enabled; wildcard origins are not used.
-
-Railway terminates TLS through a proxy; the API trusts exactly one proxy in production so Express retains the original HTTPS request context. The callback logs only the authenticated user ID and cookie attributes (never a token), while a rejected authenticated request logs whether the signed cookie was absent or could not be verified. These entries are safe to use when diagnosing a deployed login.
-
-## API Reference
+## 🔌 API Reference
 
 ### Authentication
 
-- `GET /api/auth/google` - begin Google OAuth.
-- `GET /api/auth/google/callback` - complete OAuth and issue a one-time Redis handoff.
-- `POST /api/auth/session/complete` - consume the one-time handoff and set the signed auth cookie.
-- `GET /api/auth/me` - return the authenticated user.
-- `POST /api/auth/logout` - clear authentication cookies.
+- `GET /api/auth/google` - begin Google OAuth
+- `GET /api/auth/google/callback` - complete OAuth and issue the one-time Redis handoff
+- `POST /api/auth/session/complete` - complete login and set the auth cookie
+- `GET /api/auth/me` - return the authenticated user
+- `POST /api/auth/logout` - clear authentication cookies
 
 ### Application resources
 
-- `GET /api/health` - basic service health response.
-- `GET /api/senders` and `POST /api/senders` - list and create senders.
-- `POST /api/campaigns`, `GET /api/campaigns`, `GET /api/campaigns/:id` - campaign operations.
-- `POST /api/leads/parse` - parse pasted or uploaded lead data.
-- `POST /api/emails/schedule` - persist and enqueue a campaign's emails.
-- `GET /api/emails/scheduled` - return `SCHEDULED` and `PROCESSING` emails.
-- `GET /api/emails/sent` - return only `SENT` emails.
-- `GET /api/emails/failed` - return only `FAILED` emails.
-- `GET /api/emails/:id` - return one email belonging to the authenticated user.
+- `GET /api/health` - health check
+- `GET /api/senders` and `POST /api/senders` - list and create senders
+- `POST /api/campaigns`, `GET /api/campaigns`, `GET /api/campaigns/:id` - campaign operations
+- `POST /api/leads/parse` - parse pasted or uploaded lead data
+- `POST /api/emails/schedule` - persist and queue campaign emails
+- `GET /api/emails/scheduled` - return `SCHEDULED` and `PROCESSING` emails
+- `GET /api/emails/sent` - return only `SENT` emails
+- `GET /api/emails/failed` - return only `FAILED` emails
+- `GET /api/emails/:id` - return one email for the authenticated user
 
-## Verification and Testing
+## 🧪 Verification / Testing
 
 Run from the repository root:
 
@@ -361,19 +279,14 @@ npm test
 npm run build
 ```
 
-Backend-specific diagnostics and tests:
+The automated tests cover email retry-state logic, SMTP error classification, and scheduled/processing visibility. Live delivery tests require PostgreSQL, Redis, OAuth credentials, and valid Ethereal SMTP credentials.
 
-```bash
-npm run smtp:diagnose --workspace backend
-npm run email:inspect --workspace backend -- <email-id>
-```
+## ⚖️ Trade-offs / Operational Notes
 
-The automated suite covers lead parsing, retry-state recovery, SMTP error classification, and scheduled/processing visibility. It does not require live PostgreSQL, Redis, Google OAuth, or Ethereal credentials. A complete live delivery test requires running PostgreSQL and Redis locally and valid Google/Ethereal credentials, or executing the diagnostic and a real scheduled test in the deployed environment.
+- PostgreSQL is the durable source of truth; Redis/BullMQ is execution infrastructure
+- SMTP verification is intentionally non-fatal so temporary outages do not take down the API
+- `ETIMEDOUT` with `command=CONN` means the TCP connection failed before greeting, STARTTLS, authentication, or message submission
+- Ethereal is appropriate for development and testing, not for real production mailbox delivery
+- Exactly-once delivery cannot be guaranteed across an external SMTP provider and a database update; this implementation provides bounded, retry-safe, practical duplicate protection
 
-## Operational Notes and Trade-offs
-
-- PostgreSQL is the durable source of truth; Redis/BullMQ is execution infrastructure.
-- SMTP verification is intentionally non-fatal so temporary SMTP outages do not take down the API.
-- An SMTP `ETIMEDOUT` with `command=CONN` means the TCP connection failed before greeting, STARTTLS, authentication, or message submission. The diagnostic separates these phases.
-- Ethereal captures messages for inspection and is appropriate for development/testing, not production mailbox delivery.
-- Exactly-once delivery cannot be mathematically guaranteed across an external SMTP provider and a database update. The implementation provides bounded, retry-safe, practical duplicate protection.
+The repository is a monorepo with `backend` and `frontend` workspaces.
