@@ -233,67 +233,52 @@ The frontend uses same-origin `/api` requests. Vite proxies them locally and Ver
 
 ## Local Development
 
-### Prerequisites
+1. Install prerequisites
+   - Node.js 22 or newer
+   - Docker Desktop and Docker Compose
+   - A Google OAuth client with the local callback URI registered
+   - An Ethereal account and SMTP credentials
 
-- Node.js 22 or newer.
-- Docker Desktop and Docker Compose, or separately running PostgreSQL and Redis.
-- A Google OAuth client with the local callback URI registered.
-- An Ethereal account and SMTP credentials.
-
-### Install and configure
-
-From the repository root:
+2. Clone the repository and install dependencies
 
 ```bash
 npm install
 ```
 
-Copy `.env.example` to `.env`, then set local secrets and credentials. The backend also supports `backend/.env`; do not maintain conflicting values in both files. The included Compose file publishes PostgreSQL on `localhost:5432` and Redis on `localhost:6379`.
+3. Configure the environment
 
-### Start dependencies and migrate
+Copy `.env.example` to `.env` and fill in the local values for PostgreSQL, Redis, Google OAuth, JWT, cookie secrets, and Ethereal SMTP.
+
+4. Start the local database services
 
 ```bash
 docker compose up -d postgres redis
+```
 
+5. Run the Prisma database setup
+
+```bash
 npm run prisma:generate
 npm run prisma:migrate
 ```
 
-The local database must be running before completing Google OAuth because the callback upserts the authenticated user. If the callback returns `AUTH_SERVICE_UNAVAILABLE`, check PostgreSQL first.
-
-### Start the application
-
-Run both workspaces:
+6. Start the app
 
 ```bash
 npm run dev
 ```
 
-Or run them separately:
+This starts the backend and frontend together. The backend includes the worker process when using `server.ts`.
 
-```bash
-npm run dev --workspace backend
-npm run dev --workspace frontend
+7. Open the app
+
+Visit:
+
+```text
+http://localhost:5173
 ```
 
-The backend starts Express and the BullMQ worker together. Do not also run `npm run worker --workspace backend` when using `server.ts`, unless you intentionally want a separate development worker process.
-
-Open `http://localhost:5173` and sign in with Google. The backend callback is `http://localhost:5000/api/auth/google/callback` and redirects to the configured `FRONTEND_URL`.
-
-### Local production-style commands
-
-```bash
-npm run build --workspace backend
-cd backend
-npm run start
-```
-
-The frontend supports a production preview after building:
-
-```bash
-npm run build --workspace frontend
-npm run preview --workspace frontend
-```
+Sign in with Google to complete the local OAuth flow.
 
 ## Production Deployment
 
