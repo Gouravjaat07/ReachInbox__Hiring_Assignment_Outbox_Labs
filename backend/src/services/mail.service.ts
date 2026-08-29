@@ -13,23 +13,32 @@ function smtpErrorDetails(error: unknown) {
     response?: unknown;
   };
 
+  const response = value.response;
+
   return {
     code: typeof value.code === 'string' ? value.code : undefined,
     responseCode: typeof value.responseCode === 'number' ? value.responseCode : undefined,
     command: typeof value.command === 'string' ? value.command : undefined,
     message: typeof value.message === 'string' ? value.message : undefined,
-    response: typeof value.response === 'string' ? value.response : undefined,
+    response: typeof response === 'string'
+      ? response
+      : response instanceof Buffer
+        ? response.toString('utf8')
+        : response !== undefined
+          ? String(response)
+          : undefined,
   };
 }
 
-function transportOptions() {
-  const secure = env.SMTP_PORT === 587 ? false : env.SMTP_SECURE ?? env.SMTP_PORT === 465;
+function smtpTransportOptions() {
+  const isStartTlsPort = env.SMTP_PORT === 587;
+  const secure = isStartTlsPort ? false : env.SMTP_SECURE ?? env.SMTP_PORT === 465;
 
   return {
     host: env.SMTP_HOST,
     port: env.SMTP_PORT,
     secure,
-    requireTLS: env.SMTP_PORT === 587 ? true : env.SMTP_REQUIRE_TLS,
+    requireTLS: isStartTlsPort ? true : env.SMTP_REQUIRE_TLS,
     connectionTimeout: env.SMTP_CONNECTION_TIMEOUT_MS,
     greetingTimeout: env.SMTP_GREETING_TIMEOUT_MS,
     socketTimeout: env.SMTP_SOCKET_TIMEOUT_MS,
@@ -46,13 +55,14 @@ function getTransporter() {
     return transporter;
   }
 
-  transporter = nodemailer.createTransport(transportOptions());
+  transporter = nodemailer.createTransport(smtpTransportOptions());
 
+  const transportConfig = smtpTransportOptions();
   logger.info({
     host: env.SMTP_HOST,
     port: env.SMTP_PORT,
-    secure: env.SMTP_PORT === 587 ? false : env.SMTP_SECURE ?? env.SMTP_PORT === 465,
-    requireTLS: env.SMTP_PORT === 587 ? true : env.SMTP_REQUIRE_TLS,
+    secure: transportConfig.secure,
+    requireTLS: transportConfig.requireTLS,
     connectionTimeoutMs: env.SMTP_CONNECTION_TIMEOUT_MS,
     greetingTimeoutMs: env.SMTP_GREETING_TIMEOUT_MS,
     socketTimeoutMs: env.SMTP_SOCKET_TIMEOUT_MS,
@@ -116,7 +126,16 @@ export async function sendEmailMail(input: {
         : details.responseCode !== undefined
           ? 'smtp'
           : 'unknown';
-    logger.error({ emailId: input.emailId, attempt: input.attempt, ...details, phase }, 'SMTP send failed');
+    logger.error({
+      emailId: input.emailId,
+      attempt: input.attempt,
+      code: details.code,
+      responseCode: details.responseCode,
+      command: details.command,
+      message: details.message,
+      response: details.response,
+      phase,
+    }, 'SMTP send failed');
     throw error;
   }
 }
