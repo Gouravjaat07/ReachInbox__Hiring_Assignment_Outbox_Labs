@@ -5,7 +5,7 @@ import { closeRedisClient, createBullRedisClient } from '../config/redis.js';
 import { EMAIL_QUEUE_NAME } from '../queues/queue.constants.js';
 import { claimEmailForProcessing, finalizeFailedEmail, finalizeSentEmail } from '../services/idempotency.service.js';
 import { reserveSendWindow } from '../services/rate-limit.service.js';
-import { isRetryableSmtpError, sendEmailMail, verifyMailTransport } from '../services/mail.service.js';
+import { isRetryableSmtpError, sendEmailMail, smtpErrorDetails, verifyMailTransport } from '../services/mail.service.js';
 import { emailRepository } from '../repositories/email.repository.js';
 import { emailQueue, deterministicEmailJobId } from '../queues/email.queue.js';
 import { logger } from '../utils/logger.js';
@@ -116,7 +116,24 @@ export async function startEmailWorker() {
   // is advisory; sendMail still performs the real connection and BullMQ retries
   // any transient failure using the existing PROCESSING -> SCHEDULED release.
   void verifyMailTransport().catch((error: unknown) => {
-    logger.warn({ error, dependency: 'smtp' }, 'SMTP connection unavailable; will retry when sending');
+    const details = smtpErrorDetails(error);
+    logger.warn({
+      dependency: 'smtp',
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      code: details.code,
+      responseCode: details.responseCode,
+      command: details.command,
+      message: details.message,
+      response: details.response,
+      phase: details.command === 'CONN' || ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN', 'ENETUNREACH', 'EPIPE', 'ESOCKET'].includes(details.code ?? '')
+        ? 'connection'
+        : details.code === 'EAUTH' || details.responseCode === 535
+          ? 'authentication'
+          : details.responseCode !== undefined
+            ? 'smtp'
+            : 'unknown',
+    }, 'SMTP connection unavailable; will retry when sending');
   });
 
   return worker;

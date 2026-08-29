@@ -4,7 +4,7 @@ import { logger } from '../utils/logger.js';
 
 let transporter: nodemailer.Transporter | null = null;
 
-function smtpErrorDetails(error: unknown) {
+export function smtpErrorDetails(error: unknown) {
   const value = error as {
     code?: unknown;
     responseCode?: unknown;
@@ -88,6 +88,25 @@ export async function verifyMailTransport() {
     logger.info({ host: env.SMTP_HOST, port: env.SMTP_PORT }, 'SMTP greeting, TLS, and authentication verified');
   } catch (error) {
     discardTransport();
+    const details = smtpErrorDetails(error);
+    const phase = details.command === 'CONN' || ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN', 'ENETUNREACH', 'EPIPE', 'ESOCKET'].includes(details.code ?? '')
+      ? 'connection'
+      : details.code === 'EAUTH' || details.responseCode === 535
+        ? 'authentication'
+        : details.responseCode !== undefined
+          ? 'smtp'
+          : 'unknown';
+    logger.warn({
+      dependency: 'smtp',
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      code: details.code,
+      responseCode: details.responseCode,
+      command: details.command,
+      message: details.message,
+      response: details.response,
+      phase,
+    }, 'SMTP startup verification failed; outbound SMTP connectivity is unavailable from this runtime');
     throw error;
   }
 }
